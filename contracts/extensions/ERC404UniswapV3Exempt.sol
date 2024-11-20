@@ -1,12 +1,12 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {NGU404} from "../NGU404.sol";
+import {NGU505} from "../NGU505.sol";
 import {IPeripheryImmutableState} from "@uniswap/v3-periphery/contracts/interfaces/IPeripheryImmutableState.sol";
 /// @notice - I've commented out the factory and router requirements because they're not working with local tests.
 /// Need to figure out why.
 
-abstract contract ERC404UniswapV3Exempt is NGU404 {
+abstract contract ERC404UniswapV3Exempt is NGU505 {
   error ERC404UniswapV3ExemptFactoryMismatch();
   error ERC404UniswapV3ExemptWETH9Mismatch();
 

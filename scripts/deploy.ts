@@ -13,16 +13,17 @@ async function main() {
     "Number Go Up", // name
     "NGU", // symbol
     18, // decimals
-    100000, // maxTotalSupply
+    100000000, // maxTotalSupply
     deployer.address, // initialOwner
     deployer.address, // initialMintRecipient
     "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4", // Replace with actual Uniswap Swap Router address
     "0x27F971cb582BF9E50F397e4d29a5C7A34f11faA2" // Replace with actual Uniswap V3 Nonfungible Position Manager address
   );
 
-  await numberGoUp.deployed();
+  await numberGoUp.waitForDeployment();
 
-  console.log("NumberGoUp deployed to:", numberGoUp.address);
+  const address = await numberGoUp.getAddress()
+  console.log("NumberGoUp deployed to:", address);
 }
 
 main()
