@@ -27,6 +27,7 @@ interface INGU505 is IERC165 {
   error InvalidExemption();
   error QueueEmpty();
   error NotOwner();
+  error InsufficientBalance();
 
 
     // ERC721 Functions

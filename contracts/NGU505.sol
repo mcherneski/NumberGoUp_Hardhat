@@ -218,15 +218,13 @@ abstract contract NGU505 is INGU505, ReentrancyGuard {
         address to_,
         uint256 value_
     ) internal virtual returns (bool) {
-        // Cache balances before transfer to avoid multiple SLOAD operations
-        uint256 fromBalanceBefore = balanceOf[from_];
-        uint256 toBalanceBefore = balanceOf[to_];
-
-        _transferERC20(from_, to_, value_);
-
-        // Cache exemption status to avoid multiple SLOAD operations
+        // Cache storage reads
+        uint256 fromBalance = balanceOf[from_];
+        uint256 toBalance = balanceOf[to_];
         bool isFromExempt = erc721TransferExempt(from_);
         bool isToExempt = erc721TransferExempt(to_);
+        
+        _transferERC20(from_, to_, value_);
 
         // Early return if both parties are exempt
         if (isFromExempt && isToExempt) {
@@ -237,8 +235,8 @@ abstract contract NGU505 is INGU505, ReentrancyGuard {
         uint256 fromBalanceAfter = balanceOf[from_];
         uint256 toBalanceAfter = balanceOf[to_];
         
-        uint256 fromTokensDelta = fromBalanceBefore / units - fromBalanceAfter / units;
-        uint256 toTokensDelta = toBalanceAfter / units - toBalanceBefore / units;
+        uint256 fromTokensDelta = fromBalance / units - fromBalanceAfter / units;
+        uint256 toTokensDelta = toBalanceAfter / units - toBalance / units;
 
         if (isFromExempt) {
             // Mint any new whole tokens to recipient
@@ -364,10 +362,145 @@ function getOwnerOfId(uint256 id_) public view virtual returns (address) {
     }
 
     /// @notice - Need to work on this function. Something weird with the permissions and msg.sender.
-    function stakeMultipleNFTs(uint256[] memory ids_) public virtual nonReentrant returns (bool) {
-        for (uint256 i = 0; i < ids_.length; i++) {
-            stakeNFT(ids_[i]);
+    function stakeMultipleNFTs(uint256[] calldata ids_) public virtual nonReentrant returns (bool) {
+        // Pre-validate conditions that apply to all NFTs
+        require(msg.sender != address(0), "Invalid sender");
+        require(!erc721TransferExempt(msg.sender), "Sender is exempt from ERC-721 staking");
+        
+        uint256 length;
+        uint256 totalRequired;
+        uint256 currentBalance;
+        
+        // Cache units value before assembly block
+        uint256 unitsValue = units;
+        
+        // Assembly block for initial checks and ERC20 balance updates
+        assembly {
+            length := ids_.length
+            // Calculate total required ERC20 balance using cached units value
+            totalRequired := mul(length, unitsValue)
+            
+            // Load current balance from balanceOf mapping
+            mstore(0x00, caller())
+            mstore(0x20, balanceOf.slot)
+            let balanceSlot := keccak256(0x00, 0x40)
+            currentBalance := sload(balanceSlot)
+            
+            // Check if sufficient balance
+            if lt(currentBalance, totalRequired) {
+                // Store error message
+                mstore(0x00, 0x08c379a0)  // Function selector for Error(string)
+                mstore(0x04, 0x20)        // Offset
+                mstore(0x24, 0x1a)        // Length
+                mstore(0x44, "Insufficient ERC20 balance")
+                revert(0x00, 0x64)
+            }
+            
+            // Update ERC20 balances
+            sstore(balanceSlot, sub(currentBalance, totalRequired))
+            
+            // Update staked balance
+            mstore(0x00, caller())
+            mstore(0x20, stakedERC20TokenBank.slot)
+            let stakedSlot := keccak256(0x00, 0x40)
+            let currentStaked := sload(stakedSlot)
+            sstore(stakedSlot, add(currentStaked, totalRequired))
         }
+
+        // Process NFTs
+        for (uint256 i; i < length;) {
+            uint256 id = ids_[i];
+            
+            assembly {
+                // Check ownership using _ownedData mapping
+                mstore(0x00, id)
+                mstore(0x20, _ownedData.slot)
+                let ownerDataSlot := keccak256(0x00, 0x40)
+                let ownerData := sload(ownerDataSlot)
+                let currentOwner := and(ownerData, _BITMASK_ADDRESS)
+                
+                // Verify ownership
+                if iszero(eq(currentOwner, caller())) {
+                    mstore(0x00, 0x08c379a0)  // Function selector for Error(string)
+                    mstore(0x04, 0x20)        // Offset
+                    mstore(0x24, 0x0f)        // Length
+                    mstore(0x44, "Not owner of token")
+                    revert(0x00, 0x64)
+                }
+            }
+
+            // Remove from selling queue - using existing function as it handles complex queue logic
+            removeItemFromQueueById(msg.sender, id);
+
+            // Update staked array and data - using existing functions for consistency
+            _staked[msg.sender].push(id);
+            _setStakedIndex(id, _staked[msg.sender].length - 1);
+            _setStakedIdOwner(id, msg.sender);
+
+            unchecked { ++i; }
+        }
+
+        return true;
+    }
+
+    function unstakeMultipleNFTs(uint256[] calldata ids_) public virtual nonReentrant returns (bool) {
+        require(msg.sender != address(0), "Invalid sender");
+        
+        uint256 length;
+        uint256 totalRequired;
+        uint256 stakedBalance;
+        uint256 unitsValue = units;  // Cache immutable
+        
+        // Assembly block for initial checks and ERC20 balance updates
+        assembly {
+            length := ids_.length
+            // Calculate total required staked balance
+            totalRequired := mul(length, unitsValue)
+            
+            // Load current staked balance
+            mstore(0x00, caller())
+            mstore(0x20, stakedERC20TokenBank.slot)
+            let stakedSlot := keccak256(0x00, 0x40)
+            stakedBalance := sload(stakedSlot)
+            
+            // Check if sufficient staked balance
+            if lt(stakedBalance, totalRequired) {
+                mstore(0x00, 0x08c379a0)  // Function selector for Error(string)
+                mstore(0x04, 0x20)        // Offset
+                mstore(0x24, 0x1b)        // Length
+                mstore(0x44, "Insufficient staked balance")
+                revert(0x00, 0x64)
+            }
+            
+            // Update staked balance
+            sstore(stakedSlot, sub(stakedBalance, totalRequired))
+            
+            // Update available balance
+            mstore(0x00, caller())
+            mstore(0x20, balanceOf.slot)
+            let balanceSlot := keccak256(0x00, 0x40)
+            let currentBalance := sload(balanceSlot)
+            sstore(balanceSlot, add(currentBalance, totalRequired))
+        }
+        
+        // Process NFTs
+        for (uint256 i; i < length;) {
+            uint256 id = ids_[i];
+            
+            // Verify ownership of staked NFT
+            address owner = _getOwnerOfStakedId(id);
+            require(owner == msg.sender, "Only owner can unstake");
+            
+            // Add NFT back to selling queue
+            _sellingQueue[msg.sender].pushBack(id);
+            
+            // Remove NFT from staked array and data
+            removeStakedFromQueueById(msg.sender, id);
+            delete _stakedData[id];
+            
+            unchecked { ++i; }
+        }
+        
         return true;
     }
 
@@ -399,13 +532,6 @@ function getOwnerOfId(uint256 id_) public view virtual returns (address) {
         return true;
     }
 
-/// @notice - Need to work on this function. Something weird with the permissions and msg.sender. 
-    // function unstakeMultipleNFTs(uint256[] memory ids_) public virtual returns (bool) {
-    //     for (uint256 i = 0; i < ids_.length; i++) {
-    //         unstakeNFT(ids_[i]);
-    //     }
-    //     return true;
-    // }
     /// @notice - Approvals for ERC20 balance management.
     /// in the previous version of ERC404, this function was used for 721 and 20 approvals.
     /// we don't delegte 721 approvals in this contract.
@@ -430,6 +556,8 @@ function getOwnerOfId(uint256 id_) public view virtual returns (address) {
         address to_,
         uint256 value_
     ) public virtual nonReentrant returns (bool) {
+        if (from_ == address(0) || to_ == address(0)) revert();
+        if (value_ == 0) return true;
         if (from_ == address(0)) {
             revert InvalidSender();
         }
@@ -515,11 +643,9 @@ function getOwnerOfId(uint256 id_) public view virtual returns (address) {
         address to_,
         uint256 value_
     ) public virtual nonReentrant returns (bool) {
-        // Prevent burning tokens to 0x0
-        if (to_ == address(0)) {
-            revert InvalidRecipient();
-        }
-        require(balanceOf[msg.sender] >= value_, "Insufficient balance");
+        if (to_ == address(0)) revert InvalidSender();
+        if (balanceOf[msg.sender] < value_) 
+            revert InsufficientBalance();
         uint256 value = value_ * units;
         // Transferring ERC-20s directly requires the _transferERC20WithERC721 function
         return _transferERC20WithERC721(msg.sender, to_, value);
