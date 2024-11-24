@@ -60,10 +60,14 @@ contract NumberGoUp is Ownable, NGU505, ERC404UniswapV3Exempt {
         return string(abi.encodePacked(_uriBase, dString, ".json"));
     }
 
+    event URIBaseUpdated(string newBase);
+    event ERC721TransferExemptionSet(address indexed account, bool status);
+    
     function setERC721TransferExempt(
         address account_,
         bool value_
     ) external onlyOwner {
         _setERC721TransferExempt(account_, value_);
+        emit ERC721TransferExemptionSet(account_, value_);
     }
 }

@@ -6,11 +6,11 @@ import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/interfaces/IERC721Receiver.sol";
 import {ERC721Events} from "./lib/ERC721Events.sol";
 import {ERC20Events} from "./lib/ERC20Events.sol";
-// import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import "./lib/DoubleEndedQueue.sol";
-// ReentrancyGuard
-abstract contract NGU505 is INGU505 {
+
+abstract contract NGU505 is INGU505, ReentrancyGuard {
     using DoubleEndedQueue for DoubleEndedQueue.Uint256Deque;
 
     /// @dev The name of the token.
@@ -339,7 +339,7 @@ function getOwnerOfId(uint256 id_) public view virtual returns (address) {
         // Add to selling queue (?)
     }
 
-    function stakeNFT(uint256 id_) public virtual returns (bool) {
+    function stakeNFT(uint256 id_) public virtual nonReentrant returns (bool) {
         // Ensure the caller is the owner of the NFT
         require(_getOwnerOf(id_) == msg.sender, "Caller is not the owner");
         require(msg.sender != address(0), "Invalid sender");
@@ -364,14 +364,14 @@ function getOwnerOfId(uint256 id_) public view virtual returns (address) {
     }
 
     /// @notice - Need to work on this function. Something weird with the permissions and msg.sender.
-    function stakeMultipleNFTs(uint256[] memory ids_) public virtual returns (bool) {
+    function stakeMultipleNFTs(uint256[] memory ids_) public virtual nonReentrant returns (bool) {
         for (uint256 i = 0; i < ids_.length; i++) {
             stakeNFT(ids_[i]);
         }
         return true;
     }
 
-    function unstakeNFT(uint256 id_) public virtual returns (bool) {
+    function unstakeNFT(uint256 id_) public virtual nonReentrant returns (bool) {
         // Ensure the caller is the owner of the staked NFT
         address owner = _getOwnerOfStakedId(id_);
         require(owner == msg.sender, "Only owner can unstake.");
@@ -412,7 +412,7 @@ function getOwnerOfId(uint256 id_) public view virtual returns (address) {
     function approve(
         address spender_,
         uint256 value_
-    ) public virtual returns (bool) {
+    ) public virtual nonReentrant returns (bool) {
         if (spender_ == address(0)) {
             revert InvalidSpender();
         }
@@ -429,7 +429,7 @@ function getOwnerOfId(uint256 id_) public view virtual returns (address) {
         address from_,
         address to_,
         uint256 value_
-    ) public virtual returns (bool) {
+    ) public virtual nonReentrant returns (bool) {
         if (from_ == address(0)) {
             revert InvalidSender();
         }
@@ -485,8 +485,10 @@ function getOwnerOfId(uint256 id_) public view virtual returns (address) {
         if (to_ == address(0)) {
             revert InvalidRecipient();
         }
-        // Increase minted counter
-        ++minted;
+        // Use unchecked for counter since we check for overflow right after
+        unchecked {
+            ++minted;
+        }
 
         // Reserve max uint256 for approvals
         if (minted == type(uint256).max) {
@@ -512,7 +514,7 @@ function getOwnerOfId(uint256 id_) public view virtual returns (address) {
     function transfer(
         address to_,
         uint256 value_
-    ) public virtual returns (bool) {
+    ) public virtual nonReentrant returns (bool) {
         // Prevent burning tokens to 0x0
         if (to_ == address(0)) {
             revert InvalidRecipient();
@@ -711,20 +713,16 @@ function getOwnerOfId(uint256 id_) public view virtual returns (address) {
     /// @notice - removeStakedFromQueueById is a helper function to remove the token ID from the owner's _owned array.
     function removeStakedFromQueueById(address owner, uint256 tokenId) internal {
         uint256 index = _getStakedIndex(tokenId);
-        uint256 lastIndex = _staked[owner].length - 1;
+        uint256[] storage stakedArray = _staked[owner];
+        uint256 lastIndex = stakedArray.length - 1;
 
         if (index != lastIndex) {
-            uint256 lastTokenId = _staked[owner][lastIndex];
-
-            // Swap the token IDs
-            _staked[owner][index] = lastTokenId;
-
-            // Update the owned index in the packed data for the swapped token
+            uint256 lastTokenId = stakedArray[lastIndex];
+            stakedArray[index] = lastTokenId;
             _setStakedIndex(lastTokenId, index);
         }
 
-        // Remove the last element
-        _staked[owner].pop();
+        stakedArray.pop();
         delete _stakedData[tokenId];
     }
 
@@ -739,7 +737,7 @@ function getOwnerOfId(uint256 id_) public view virtual returns (address) {
         uint8 v_,
         bytes32 r_,
         bytes32 s_
-    ) public virtual {
+    ) public virtual nonReentrant {
         if (deadline_ < block.timestamp) {
             revert PermitDeadlineExpired();
         }
