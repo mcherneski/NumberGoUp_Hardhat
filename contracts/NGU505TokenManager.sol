@@ -141,9 +141,14 @@ abstract contract NGU505TokenManager is NGU505Base, INGU505TokenManager {
     }
 
     // Internal Helper Functions
-    function _withdrawAndBurnERC721(address from_) internal virtual {
-        if (from_ == address(0)) revert InvalidSender();
-        if (_sellingQueue[from_].empty()) revert QueueEmpty();
+    function _withdrawAndBurnERC721(address from_) internal virtual override {
+        if (from_ == address(0)) {
+            revert InvalidSender();
+        }
+
+        if (_sellingQueue[from_].empty()) {
+            revert QueueEmpty();
+        }
 
         uint256 tokenId = _sellingQueue[from_].popFront();
         _transferERC721(from_, address(0), tokenId);

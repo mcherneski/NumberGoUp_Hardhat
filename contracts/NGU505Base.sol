@@ -22,6 +22,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
     error PermitDeadlineExpired();
     error InvalidSigner();
     error NotOwner();
+    error NotFound();
 
     // Events
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -147,6 +148,8 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         address to_,
         uint256 id_
     ) internal virtual {
+      // Ok TOMORROW YOU NEED TO LOOK AT THIS CODE. NotOwner() is being triggered, which means the owner is not being exempted correctly. 
+      // This may be an issue with the exemption or it could be a problem with the _transferERC20WithERC721 function.
         if (from_ != address(0)) {
             if (_getOwnerOf(id_) != from_) revert NotOwner();
             removeOwnedById(from_, id_);
@@ -168,30 +171,58 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         address to_,
         uint256 value_
     ) internal virtual returns (bool) {
+        // Cache balances before transfer to avoid multiple SLOAD operations
         uint256 fromBalance = balanceOf[from_];
         uint256 toBalance = balanceOf[to_];
 
+        // Perform ERC20 transfer
         _transferERC20(from_, to_, value_);
 
+        // Cache exemption status to avoid multiple SLOAD operations
         bool isFromExempt = erc721TransferExempt(from_);
         bool isToExempt = erc721TransferExempt(to_);
 
+        // Early return if both parties are exempt
         if (isFromExempt && isToExempt) {
             return true;
         }
 
+        // Calculate whole token changes
         uint256 fromBalanceAfter = balanceOf[from_];
         uint256 toBalanceAfter = balanceOf[to_];
         
         uint256 fromTokensDelta = fromBalance / units - fromBalanceAfter / units;
         uint256 toTokensDelta = toBalanceAfter / units - toBalance / units;
 
-        if (fromTokensDelta > 0 || toTokensDelta > 0) {
-            uint256 tokensToTransfer = value_ / units;
-            
-            for (uint256 i = 0; i < tokensToTransfer;) {
-                _transferERC721(from_, to_, minted + 1);
+        if (isFromExempt) {
+            // Mint any new whole tokens to recipient
+            for (uint256 i = 0; i < toTokensDelta; ) {
+                _mintERC721(to_);
                 unchecked { ++i; }
+            }
+        } else if (isToExempt) {
+            // Burn whole tokens from sender
+            for (uint256 i = 0; i < fromTokensDelta; ) {
+                _withdrawAndBurnERC721(from_);
+                unchecked { ++i; }
+            }
+        } else {
+            // Transfer whole tokens between non-exempt addresses
+            uint256 nftsToTransfer = value_ / units;
+            
+            // First handle direct transfers
+            for (uint256 i = 0; i < nftsToTransfer; ) {
+                _transferERC721(from_, to_, 0);
+                unchecked { ++i; }
+            }
+
+            // Then handle any fractional cleanup
+            if (fromTokensDelta > nftsToTransfer) {
+                _withdrawAndBurnERC721(from_);
+            }
+
+            if (toTokensDelta > nftsToTransfer) {
+                _mintERC721(to_);
             }
         }
 
@@ -388,4 +419,28 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
     }
 
     function tokenURI(uint256 id_) public view virtual returns (string memory);
+
+    /// @notice Internal function to burn ERC721
+    /// @dev Removes the first token from the owner's queue and burns it
+    /// @param from_ The address to burn the token from
+    function _withdrawAndBurnERC721(address from_) internal virtual {
+        if (from_ == address(0)) {
+            revert InvalidSender();
+        }
+
+        // Get the first token in the owner's queue
+        uint256 tokenId = _getNextQueueId(from_);
+
+        // Transfer to zero address to burn
+        _transferERC721(from_, address(0), tokenId);
+    }
+
+    /// @notice Helper function to get the next token ID from an address's queue
+    /// @param owner_ The address to get the next token ID from
+    /// @return The next token ID in the queue
+    function _getNextQueueId(address owner_) internal view virtual returns (uint256) {
+        uint256[] storage ownedTokens = _owned[owner_];
+        if (ownedTokens.length == 0) revert NotFound();
+        return ownedTokens[0];
+    }
 } 
