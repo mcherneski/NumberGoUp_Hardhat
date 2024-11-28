@@ -178,8 +178,8 @@ describe("NumberGoUp", function () {
 
       await numberGoUp.connect(recipient).transfer(thirdParty.address, amount)
       const tokenId = 1n
-      await numberGoUp.connect(thirdParty).stakeNFT(tokenId)
-
+      const status = await numberGoUp.connect(thirdParty).stakeNFT(tokenId)
+      console.log("Stake Status:", status)
       await expect(
         numberGoUp.connect(thirdParty).transfer(fourthParty.address, amount)
       ).to.be.revertedWithCustomError(numberGoUp, "InsufficientBalance")
