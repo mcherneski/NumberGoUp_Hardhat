@@ -3,15 +3,16 @@ pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
-import {NGU505} from "./NGU505.sol";
 import {ERC404UniswapV3Exempt} from "./extensions/ERC404UniswapV3Exempt.sol";
-/// @notice - I commented out the ERC404UniswapV3Exempt extension because it's not working with local tests. 
-/// the contract should inherit from the ERC404UniswapV3Exempt extension in the future.
-// ERC404UniswapV3Exempt
-contract NumberGoUp is Ownable, NGU505, ERC404UniswapV3Exempt {
+import {NGU505TokenManager} from "./NGU505TokenManager.sol";
+import {NGU505Base} from "./NGU505Base.sol";
+
+contract NumberGoUp is NGU505TokenManager, ERC404UniswapV3Exempt, Ownable {
     string public _uriBase = "https://ipfs.io/ipfs/QmUMUSjDwvMqgbPneHnvpQAt8cEBDEDgDZUyYM93qazLga/";
     uint256 public constant variants = 5;
     using Strings for uint256;
+
+    event URIBaseUpdated(string newBase);
 
     constructor(
         string memory name_,
@@ -23,20 +24,26 @@ contract NumberGoUp is Ownable, NGU505, ERC404UniswapV3Exempt {
         address uniswapSwapRouter_,
         address uniswapV3NonfungiblePositionManager_
     )
-        NGU505(name_, symbol_, decimals_)
-        Ownable(initialOwner_)
+        NGU505Base(name_, symbol_, decimals_, maxTotalSupplyERC20_)
         ERC404UniswapV3Exempt(
             uniswapSwapRouter_,
             uniswapV3NonfungiblePositionManager_
         )
+        Ownable(initialOwner_)
     {
-        // Do not mint 721s to initial owner
         _setERC721TransferExempt(initialMintRecipient_, true);
         _mintERC20(initialMintRecipient_, maxTotalSupplyERC20_ * units);
     }
-    function tokenURI(
-        uint256 id
-    ) public view virtual override returns (string memory) {
+
+    // Implement missing exemption function
+    function setSelfERC721TransferExempt(bool state) external override {
+        _setERC721TransferExempt(msg.sender, state);
+    }
+
+    // Existing functions
+    function tokenURI(uint256 id) public view override returns (string memory) {
+        if (_getOwnerOf(id) == address(0)) revert InvalidTokenId();
+        
         uint256 v = (uint256(keccak256(abi.encode(id))) % 1000);
         uint256 d;
         if (v < 29) {
@@ -55,19 +62,12 @@ contract NumberGoUp is Ownable, NGU505, ERC404UniswapV3Exempt {
             // Rarity 5: 46.9%
             d = 5;
         }
-        // Cache the result of d.toString() to save gas
         string memory dString = d.toString();
         return string(abi.encodePacked(_uriBase, dString, ".json"));
     }
 
-    event URIBaseUpdated(string newBase);
-    event ERC721TransferExemptionSet(address indexed account, bool status);
-    
-    function setERC721TransferExempt(
-        address account_,
-        bool value_
-    ) external onlyOwner {
-        _setERC721TransferExempt(account_, value_);
-        emit ERC721TransferExemptionSet(account_, value_);
+    function setURIBase(string memory newBase_) external onlyOwner {
+        _uriBase = newBase_;
+        emit URIBaseUpdated(newBase_);
     }
 }
