@@ -45,6 +45,10 @@ interface INGU505Base is IERC165 {
     /// @param required The required amount
     /// @param available The available balance
     error SenderInsufficientBalance(uint256 required, uint256 available);
+    /// @notice Thrown when allowance is insufficient for operation
+    /// @param requested The requested amount
+    /// @param available The available allowance
+    error InsufficientAllowance(uint256 requested, uint256 available);
     error InvalidRecipient();
     error InvalidSender();
     error InvalidSpender();
@@ -67,6 +71,10 @@ interface INGU505Base is IERC165 {
     error InvalidOperation(string reason);
     error BatchOperationFailed(uint256[] failedIds, string reason);
 
+    // Add queue-specific errors
+    error QueueEmpty();
+    error QueueFull();
+    error QueueOutOfBounds();
 
     // Core ERC20 functions
     /// @notice Transfer tokens to a specified address
@@ -115,4 +123,13 @@ interface INGU505Base is IERC165 {
     
     function nonces(address owner) external view returns (uint256);
     function DOMAIN_SEPARATOR() external view returns (bytes32);
+
+    /// @notice Get the maximum total supply of ERC20 tokens
+    /// @return The maximum total supply including decimals
+    function maxTotalSupplyERC20() external view returns (uint256);
+
+    // Add queue management functions
+    function getNextQueueId(address owner_) external view returns (uint256);
+    function getQueueLength(address owner_) external view returns (uint256);
+    function getIdAtQueueIndex(address owner_, uint128 index_) external view returns (uint256);
 } 

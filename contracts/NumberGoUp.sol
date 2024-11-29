@@ -4,10 +4,10 @@ pragma solidity ^0.8.20;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {ERC404UniswapV3Exempt} from "./extensions/ERC404UniswapV3Exempt.sol";
-import {NGU505TokenManager} from "./NGU505TokenManager.sol";
+import {NGU505Staking} from "./NGU505Staking.sol";
 import {NGU505Base} from "./NGU505Base.sol";
 
-contract NumberGoUp is NGU505TokenManager, ERC404UniswapV3Exempt, Ownable {
+contract NumberGoUp is NGU505Staking, ERC404UniswapV3Exempt, Ownable {
     string public _uriBase = "https://ipfs.io/ipfs/QmUMUSjDwvMqgbPneHnvpQAt8cEBDEDgDZUyYM93qazLga/";
     uint256 public constant variants = 5;
     using Strings for uint256;
@@ -35,12 +35,6 @@ contract NumberGoUp is NGU505TokenManager, ERC404UniswapV3Exempt, Ownable {
         _mintERC20(initialMintRecipient_, maxTotalSupplyERC20_ * units);
     }
 
-    // Implement missing exemption function
-    function setSelfERC721TransferExempt(bool state) external override {
-        _setERC721TransferExempt(msg.sender, state);
-    }
-
-    // Existing functions
     function tokenURI(uint256 id) public view override returns (string memory) {
         if (_getOwnerOf(id) == address(0)) revert InvalidTokenId();
         

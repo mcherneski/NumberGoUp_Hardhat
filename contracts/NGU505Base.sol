@@ -5,8 +5,11 @@ import {INGU505Base} from "./interfaces/INGU505Base.sol";
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/interfaces/IERC721Receiver.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {DoubleEndedQueue} from "./lib/DoubleEndedQueue.sol";
 
 abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
+    using DoubleEndedQueue for DoubleEndedQueue.Uint256Deque;
+
     // ============ Storage ============
     // Core state variables
     string public name;
@@ -35,6 +38,9 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
     uint256 private constant _BITMASK_ADDRESS = (1 << 160) - 1;
     uint256 private constant _BITMASK_OWNED_INDEX = ((1 << 96) - 1) << 160;
 
+    // Add queue mapping
+    mapping(address => DoubleEndedQueue.Uint256Deque) internal _sellingQueue;
+
     // ============ Constructor ============
     constructor(
         string memory name_,
@@ -50,7 +56,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         }
         decimals = decimals_;
         units = 10 ** decimals;
-        _maxTotalSupplyERC20 = maxTotalSupplyERC20_;
+        _maxTotalSupplyERC20 = maxTotalSupplyERC20_ * units;
 
         _INITIAL_CHAIN_ID = block.chainid;
         _INITIAL_DOMAIN_SEPARATOR = _computeDomainSeparator();
@@ -83,6 +89,10 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         return _owned[owner].length;
     }
 
+    function maxTotalSupplyERC20() public view virtual override returns (uint256) {
+        return _maxTotalSupplyERC20;
+    }
+
     // ============ External Transfer Functions ============
     function transfer(address to_, uint256 value_) public virtual override nonReentrant returns (bool) {
         if (to_ == address(0)) revert InvalidRecipient();
@@ -98,6 +108,8 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         if (to_ == address(0)) revert InvalidRecipient();
 
         uint256 allowed = allowance[from_][msg.sender];
+        if (allowed < value_) revert InsufficientAllowance(value_, allowed);
+
         if (allowed != type(uint256).max) {
             allowance[from_][msg.sender] = allowed - value_;
         }
@@ -105,10 +117,19 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         return _transferERC20WithERC721(from_, to_, value_);
     }
 
-    function approve(address spender, uint256 value) public virtual override returns (bool) {
-        allowance[msg.sender][spender] = value;
-        emit Approval(msg.sender, spender, value);
+    function approve(
+        address spender_,
+        uint256 value_
+    ) public virtual override returns (bool) {
+        if (spender_ == address(0)) revert InvalidSpender();
+        
+        allowance[msg.sender][spender_] = value_;
+        emit Approval(msg.sender, spender_, value_);
         return true;
+    }
+
+    function setSelfERC721TransferExempt(bool state) external virtual override {
+        _setERC721TransferExempt(msg.sender, state);
     }
 
     // ============ Internal Mint/Burn Functions ============
@@ -132,11 +153,17 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         }
 
         uint256 id = minted;
+        if (id == 0) {
+            ++minted;
+            id = minted;
+        }
+
         if (_getOwnerOf(id) != address(0)) {
             revert AlreadyExists();
         }
 
         _transferERC721(address(0), to_, id);
+
     }
 
     function _setERC721TransferExempt(address account_, bool value_) internal virtual {
@@ -149,6 +176,12 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         address to_,
         uint256 value_
     ) internal virtual {
+        if (from_ != address(0)) {
+            if (balanceOf[from_] < value_) {
+                revert SenderInsufficientBalance(value_, balanceOf[from_]);
+            }
+        }
+
         if (from_ == address(0)) {
             totalSupply += value_;
         } else {
@@ -169,16 +202,39 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         address to_,
         uint256 id_
     ) internal virtual {
+        uint256 tokenId = id_;
+        
         if (from_ != address(0)) {
-            if (_getOwnerOf(id_) != from_) revert NotOwner();
-            _removeFromOwned(from_, id_);
+            // First verify ownership to prevent unnecessary queue operations
+            if (id_ == 0) {
+                tokenId = getNextQueueId(from_);
+                if (tokenId == 0) revert QueueEmpty();
+            }
+            
+            // Verify ownership before any queue operations
+            if (_getOwnerOf(tokenId) != from_) revert NotOwner();
+
+            // Now safe to perform queue operations
+            if (id_ == 0) {
+                _sellingQueue[from_].popFront();
+            } else {
+                _removeFromSellingQueue(from_, tokenId);
+            }
+            
+            _removeFromOwned(from_, tokenId);
         }
 
         if (to_ != address(0)) {
-            _addToOwned(to_, id_);
+            // First update ownership
+            _addToOwned(to_, tokenId);
+            
+            // Then update queue if needed
+            if (!erc721TransferExempt(to_)) {
+                _addToSellingQueue(to_, tokenId);
+            }
         }
 
-        emit ERC721Transfer(from_, to_, id_);
+        emit ERC721Transfer(from_, to_, tokenId);
     }
 
     // ============ Internal Ownership Management ============
@@ -244,44 +300,50 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         address to_,
         uint256 value_
     ) internal virtual returns (bool) {
-        // Check balance
-        if (balanceOf[from_] < value_) {
-            revert SenderInsufficientBalance(value_, balanceOf[from_]);
+        bool isFromExempt = erc721TransferExempt(from_);
+        bool isToExempt = erc721TransferExempt(to_);
+        uint256 wholeTokens = value_ / units;
+
+        // For non-exempt transfers, verify NFT operations are possible first
+        if (wholeTokens > 0 && !isFromExempt && !isToExempt) {
+            // Verify sender has enough NFTs in queue
+            if (getQueueLength(from_) < wholeTokens) revert SenderInsufficientBalance(wholeTokens, getQueueLength(from_));
         }
 
         // Perform ERC20 transfer
         _transferERC20(from_, to_, value_);
+        
+        if (wholeTokens == 0) {
+            return true;
+        }
 
-        // Cache exemption status
-        bool isFromExempt = erc721TransferExempt(from_);
-        bool isToExempt = erc721TransferExempt(to_);
+        // Special case for minting
+        if (from_ == address(0)) {
+            if (isToExempt) {
+                return true;
+            }
+            unchecked {
+                for (uint256 i; i < wholeTokens; ++i) {
+                    _mintERC721(to_);
+                }
+            }
+            return true;
+        }
 
-        // Early return if both parties are exempt
         if (isFromExempt && isToExempt) {
             return true;
         }
 
-        // Calculate whole tokens
-        uint256 nftsToTransfer = value_ / units;
-
-        // Handle NFT transfers based on exemption status
-        if (isFromExempt) {
-            // Only mint new tokens
-            for (uint256 i; i < nftsToTransfer;) {
-                _mintERC721(to_);
-                unchecked { ++i; }
-            }
-        } else if (isToExempt) {
-            // Only burn tokens
-            for (uint256 i; i < nftsToTransfer;) {
-                _withdrawAndBurnERC721(from_);
-                unchecked { ++i; }
-            }
-        } else {
-            // Transfer tokens directly
-            for (uint256 i; i < nftsToTransfer;) {
-                _transferERC721(from_, to_, 0);
-                unchecked { ++i; }
+        // Handle NFT operations
+        unchecked {
+            for (uint256 i; i < wholeTokens; ++i) {
+                if (!isFromExempt && isToExempt) {
+                    _withdrawAndBurnERC721(from_);
+                } else if (isFromExempt && !isToExempt) {
+                    _mintERC721(to_);
+                } else if (!isFromExempt && !isToExempt) {
+                    _transferERC721(from_, to_, 0);
+                }
             }
         }
 
@@ -326,8 +388,6 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
     ) public virtual override {
         if (deadline < block.timestamp) revert PermitDeadlineExpired();
 
-        // Unchecked because the only math done is incrementing
-        // the owner's nonce which cannot realistically overflow.
         unchecked {
             bytes32 structHash = keccak256(
                 abi.encode(
@@ -359,5 +419,49 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
     ) public view virtual override returns (bool) {
         return interfaceId == type(INGU505Base).interfaceId ||
                interfaceId == type(IERC165).interfaceId;
+    }
+
+    // Add this function for initial minting
+    function _initializeMint(address to_, uint256 value_) internal virtual {
+        if (to_ == address(0)) revert InvalidRecipient();
+        if (totalSupply + value_ > _maxTotalSupplyERC20) {
+            revert MaxSupplyExceeded(totalSupply + value_, _maxTotalSupplyERC20);
+        }
+        
+        totalSupply += value_;
+        balanceOf[to_] += value_;
+        
+        emit Transfer(address(0), to_, value_);
+    }
+
+    // Queue management functions
+    function getNextQueueId(address owner_) public view virtual returns (uint256) {
+        if (_sellingQueue[owner_].empty()) {
+            return 0;
+        }
+        return _sellingQueue[owner_].front();
+    }
+
+    function getQueueLength(address owner_) public view virtual returns (uint256) {
+        return _sellingQueue[owner_].size();
+    }
+
+    function getIdAtQueueIndex(
+        address owner_,
+        uint128 index_
+    ) public view virtual returns (uint256) {
+        return _sellingQueue[owner_].at(index_);
+    }
+
+    function _addToSellingQueue(address owner_, uint256 tokenId_) internal {
+        _sellingQueue[owner_].pushBack(tokenId_);
+    }
+
+    function _removeFromSellingQueue(address owner_, uint256 tokenId_) internal {
+        _sellingQueue[owner_].removeById(tokenId_);
+    }
+
+    function getOwnedTokens(address owner_) public view returns (uint256[] memory) {
+        return _owned[owner_];
     }
 } 
