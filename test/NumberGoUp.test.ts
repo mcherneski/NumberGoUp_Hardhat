@@ -110,19 +110,39 @@ describe("NumberGoUp", function () {
     }
   }
 
-  // Helper function for state logging
+  // Add helper function to log state
   async function logState(numberGoUp: any, address: string, label: string) {
     const owned = await numberGoUp.getOwnedTokens(address);
     const staked = await numberGoUp.getStakedTokens(address);
     const stakedBalance = await numberGoUp.getStakedERC20Balance(address);
     const erc20Balance = await numberGoUp.erc20BalanceOf(address);
+    const queueLength = await numberGoUp.getQueueLength(address);
     
-    console.log(`\nState for ${label} (${address}):`);
+    console.log(`\n=== State for ${label} (${address}) ===`);
     console.log("Owned NFTs:", owned.map((id: bigint) => id.toString()));
     console.log("Staked NFTs:", staked.map((id: bigint) => id.toString()));
     console.log("ERC20 Balance:", erc20Balance.toString());
     console.log("Staked ERC20 Balance:", stakedBalance.toString());
-    console.log("Queue Length:", (await numberGoUp.getQueueLength(address)).toString());
+    console.log("Queue Length:", queueLength.toString());
+
+    // Queue contents
+    if (queueLength > 0) {
+        const queueContents = [];
+        for(let i = 0; i < queueLength; i++) {
+            const tokenId = await numberGoUp.getIdAtQueueIndex(address, i);
+            queueContents.push(tokenId.toString());
+        }
+        console.log("Queue Contents (in order):", queueContents);
+    } else {
+        console.log("Queue is empty");
+    }
+
+    // Log owned token indices
+    console.log("\nOwned Token Indices:");
+    for (const tokenId of owned) {
+        const index = await numberGoUp.getOwnedIndex(tokenId);
+        console.log(`Token ${tokenId.toString()} is at index ${index.toString()}`);
+    }
   }
 
   describe("Deployment", function () {
@@ -200,7 +220,7 @@ describe("NumberGoUp", function () {
   describe("Token Operations", function () {
     it("Should handle ERC20 transfers correctly", async function () {
       const { numberGoUp, owner, signers } = await loadFixture(deployNumberGoUpFixture);
-      const [_, recipient] = signers;
+      const [_, recipient, secondParty] = signers;
       const amount = ethers.parseEther("1");
 
       await logState(numberGoUp, owner.address, "Owner before transfer");
@@ -212,6 +232,12 @@ describe("NumberGoUp", function () {
       await logState(numberGoUp, recipient.address, "Recipient after transfer");
 
       expect(await numberGoUp.erc20BalanceOf(recipient.address)).to.equal(amount);
+
+      await numberGoUp.connect(recipient).transfer(secondParty.address, amount);
+      await logState(numberGoUp, recipient.address, "Recipient after transfer to second party");
+      await logState(numberGoUp, secondParty.address, "Second party after transfer");
+      expect(await numberGoUp.erc20BalanceOf(recipient.address)).to.equal(0);
+      expect(await numberGoUp.erc20BalanceOf(secondParty.address)).to.equal(amount);
     });
 
     it("Should handle fractional transfers correctly", async function () {
@@ -866,10 +892,87 @@ describe("NumberGoUp", function () {
 
       // Try to transfer tokens to verify they're in the queue
       const transferAmount = ethers.parseEther("2");
+      console.log("\nChecking owner exempt status:", await numberGoUp.erc721TransferExempt(owner.address));
+      expect(await numberGoUp.erc721TransferExempt(owner.address),
+        "Owner address should be transfer exempt"
+      ).to.be.true;
       await numberGoUp.connect(recipient).transfer(owner.address, transferAmount);
       
       await logState(numberGoUp, recipient.address, "After transferring 2 tokens back to owner");
       await logState(numberGoUp, owner.address, "Owner after receiving 2 tokens");
+    });
+
+    it("Should add unstaked tokens to back of selling queue", async function () {
+      const { numberGoUp, owner, signers } = await loadFixture(deployNumberGoUpFixture);
+      const [_, recipient] = signers;
+      const amount = ethers.parseEther("4"); // 4 whole tokens
+
+      // Transfer tokens to recipient
+      await numberGoUp.connect(owner).transfer(recipient.address, amount);
+      console.log("\nInitial Transfer:");
+      await logState(numberGoUp, recipient.address, "Recipient after receiving tokens");
+
+      // Stake tokens 1 and 2
+      console.log("\nStaking tokens 1 and 2:");
+      await numberGoUp.connect(recipient).stakeNFT(1);
+      await numberGoUp.connect(recipient).stakeNFT(2);
+      await logState(numberGoUp, recipient.address, "Recipient after staking");
+
+      // Transfer token 3 to create activity in the queue
+      console.log("\nTransferring token 3:");
+      console.log("\nChecking selling queue before transfer:");
+      const queueLengthBefore = await numberGoUp.getQueueLength(recipient.address);
+      for(let i = 0; i < queueLengthBefore; i++) {
+        const tokenId = await numberGoUp.getIdAtQueueIndex(recipient.address, i);
+        console.log(`Queue Position ${i}: Token ID ${tokenId}`);
+      }
+      await numberGoUp.connect(recipient).transfer(owner.address, ethers.parseEther("1"));
+      await logState(numberGoUp, recipient.address, "Recipient after transfer");
+
+      // Now unstake token 1
+      console.log("\nUnstaking token 1:");
+      await numberGoUp.connect(recipient).unstakeNFT(1);
+      await logState(numberGoUp, recipient.address, "Recipient after unstaking token 1");
+
+      // Check queue order
+      const queueLength = await numberGoUp.getQueueLength(recipient.address);
+      console.log("\nChecking Queue Order:");
+      for(let i = 0; i < queueLength; i++) {
+        const tokenId = await numberGoUp.getIdAtQueueIndex(recipient.address, i);
+        console.log(`Queue Position ${i}: Token ID ${tokenId}`);
+      }
+
+      // Verify token 1 is at the back of the queue
+      const lastTokenId = await numberGoUp.getIdAtQueueIndex(
+        recipient.address, 
+        queueLength - 1n
+      );
+      
+      expect(lastTokenId,
+        "Unstaked token should be at the back of the queue"
+      ).to.equal(1);
+
+      // Unstake token 2 and verify it goes to the back
+      console.log("\nUnstaking token 2:");
+      await numberGoUp.connect(recipient).unstakeNFT(2);
+      await logState(numberGoUp, recipient.address, "Recipient after unstaking token 2");
+
+      const newQueueLength = await numberGoUp.getQueueLength(recipient.address);
+      const newLastTokenId = await numberGoUp.getIdAtQueueIndex(
+        recipient.address, 
+        newQueueLength - 1n
+      );
+
+      expect(newLastTokenId,
+        "Newly unstaked token should be at the back of the queue"
+      ).to.equal(2);
+
+      // Print final queue order
+      console.log("\nFinal Queue Order:");
+      for(let i = 0; i < newQueueLength; i++) {
+        const tokenId = await numberGoUp.getIdAtQueueIndex(recipient.address, i);
+        console.log(`Queue Position ${i}: Token ID ${tokenId}`);
+      }
     });
   });
 
@@ -967,6 +1070,114 @@ describe("NumberGoUp", function () {
       expect(ownerBalance + recipientBalance + recipientStaked,
         "Sum of all balances should equal total supply"
       ).to.equal(initialSupply);
+    });
+  });
+
+  describe("Multiple Unstaking Operations", function () {
+    it("Should handle multiple unstaking and maintain correct queue order", async function () {
+      const { numberGoUp, owner, signers } = await loadFixture(deployNumberGoUpFixture);
+      const [_, recipient] = signers;
+      const amount = ethers.parseEther("5"); // 5 whole tokens
+
+      // Transfer tokens to recipient
+      await numberGoUp.connect(owner).transfer(recipient.address, amount);
+      console.log("\nInitial Transfer:");
+      await logState(numberGoUp, recipient.address, "Recipient after receiving tokens");
+
+      // Stake multiple tokens (1, 2, 3, 4)
+      console.log("\nStaking tokens 1, 2, 3, 4:");
+      await numberGoUp.connect(recipient).stakeMultipleNFTs([1, 2, 3, 4]);
+      await logState(numberGoUp, recipient.address, "Recipient after staking");
+
+      // Transfer token 5 to create activity in the queue
+      console.log("\nTransferring token 5:");
+      const tx = await numberGoUp.connect(recipient).transfer(owner.address, ethers.parseEther("1"));
+      const receipt = await tx.wait();
+      
+      // Log debug events
+      if (receipt && receipt.logs) {
+          for (const log of receipt.logs) {
+              try {
+                  const event = numberGoUp.interface.parseLog(log);
+                  if (event && event.name === 'DebugRemoval') {
+                      console.log('\n=== Debug Removal Event ===');
+                      console.log('Operation:', event.args.message);
+                      console.log('Token ID:', event.args.tokenId.toString());
+                      console.log('Index to Remove:', event.args.indexToRemove.toString());
+                      console.log('Last Index:', event.args.lastIndex.toString());
+                      console.log('Last Token ID:', event.args.lastTokenId.toString());
+                  }
+                  if (event && event.name === 'QueueOperation') {
+                      console.log('\n=== Queue Operation Event ===');
+                      console.log('Operation:', event.args.operation);
+                      console.log('Token ID:', event.args.tokenId.toString());
+                  }
+              } catch (e) {
+                  // Skip logs that can't be parsed
+              }
+          }
+      }
+
+      await logState(numberGoUp, recipient.address, "Recipient after transfer");
+      await logState(numberGoUp, owner.address, "Owner after transfer");
+
+      // Verify final state
+      expect(await numberGoUp.erc20BalanceOf(recipient.address),
+          "Recipient should have 0 ERC20 tokens after transfer"
+      ).to.equal(0);
+
+      expect(await numberGoUp.getQueueLength(recipient.address),
+          "Recipient's queue should be empty after transfer"
+      ).to.equal(0);
+
+      const recipientOwned = await numberGoUp.getOwnedTokens(recipient.address);
+      expect(recipientOwned.length,
+          "Recipient should have 4 owned tokens (1,2,3,4)"
+      ).to.equal(4);
+
+      // Verify staked tokens remain unchanged
+      const recipientStaked = await numberGoUp.getStakedTokens(recipient.address);
+      expect(recipientStaked.map(id => id.toString()),
+          "Staked tokens should remain unchanged"
+      ).to.deep.equal(['1', '2', '3', '4']);
+
+    });
+
+    it("Should handle partial unstaking correctly", async function () {
+      const { numberGoUp, owner, signers } = await loadFixture(deployNumberGoUpFixture);
+      const [_, recipient] = signers;
+      const amount = ethers.parseEther("3"); // 3 whole tokens
+
+      // Setup: Transfer and stake tokens
+      await numberGoUp.connect(owner).transfer(recipient.address, amount);
+      await numberGoUp.connect(recipient).stakeMultipleNFTs([1, 2, 3]);
+      await logState(numberGoUp, recipient.address, "After staking all tokens");
+
+      // Unstake subset of tokens
+      console.log("\nUnstaking tokens 1 and 3:");
+      await numberGoUp.connect(recipient).unstakeMultipleNFTs([1, 3]);
+      await logState(numberGoUp, recipient.address, "After partial unstake");
+
+      // Verify remaining staked tokens
+      expect(await numberGoUp.getStakedERC20Balance(recipient.address),
+        "Should have one token remaining staked"
+      ).to.equal(ethers.parseEther("1"));
+
+      // Verify queue state
+      const queueLength = await numberGoUp.getQueueLength(recipient.address);
+      expect(queueLength,
+        "Queue should have two unstaked tokens"
+      ).to.equal(2);
+
+      // Verify queue order
+      const firstQueuedToken = await numberGoUp.getIdAtQueueIndex(recipient.address, 0);
+      const secondQueuedToken = await numberGoUp.getIdAtQueueIndex(recipient.address, 1);
+      expect(firstQueuedToken,
+        "First unstaked token should be first in queue"
+      ).to.equal(1);
+      expect(secondQueuedToken,
+        "Second unstaked token should be second in queue"
+      ).to.equal(3);
     });
   });
 });

@@ -88,11 +88,8 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
 
         uint256 stakedBalance = stakedERC20TokenBank[msg.sender];
         if (stakedBalance < units) revert StakerInsufficientBalance(units, stakedBalance);
-
-        // First add back to selling queue
-        _addToSellingQueue(msg.sender, id_);
         
-        // Then remove from staked array and clear mappings
+        // Remove from staked array and clear mappings
         uint256 index = _getStakedIndex(id_);
         uint256[] storage stakedArray = _staked[msg.sender];
         uint256 lastIndex = stakedArray.length - 1;
@@ -104,7 +101,8 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
         }
         stakedArray.pop();
         delete _stakedData[id_];
-
+        // Add unstaked token to back of selling queue
+        _addToSellingQueue(msg.sender, id_);
         // Finally handle ERC20 transfers
         _setERC721TransferExempt(msg.sender, true);
         unchecked {
@@ -239,6 +237,58 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
     /// @return The sum of ERC20 balance and staked balance
     function totalBalanceOf(address owner_) public view returns (uint256) {
         return _totalBalanceOf(owner_);
+    }
+
+    function unstakeMultipleNFTs(uint256[] calldata ids_) public virtual nonReentrant returns (bool) {
+        uint256 length = ids_.length;
+        address sender = msg.sender;
+        
+        if (length == 0) revert EmptyStakingArray();
+        
+        // Calculate total amount
+        uint256 totalUnstakeAmount;
+        unchecked {
+            totalUnstakeAmount = length * units;
+        }
+        
+        uint256 stakedBalance = stakedERC20TokenBank[sender];
+        if (stakedBalance < totalUnstakeAmount) {
+            revert StakerInsufficientBalance(totalUnstakeAmount, stakedBalance);
+        }
+
+        // Process one token at a time
+        unchecked {
+            for (uint256 i; i < length; ++i) {
+                uint256 id = ids_[i];
+                
+                // Verify ownership of staked token
+                if (_getOwnerOfStakedId(id) != sender) revert NotTokenOwner();
+
+                // Remove from staked array and clear mappings
+                uint256 index = _getStakedIndex(id);
+                uint256[] storage stakedArray = _staked[sender];
+                uint256 lastIndex = stakedArray.length - 1;
+
+                if (index != lastIndex) {
+                    uint256 lastTokenId = stakedArray[lastIndex];
+                    stakedArray[index] = lastTokenId;
+                    _setStakedIndex(lastTokenId, index);
+                }
+                stakedArray.pop();
+                delete _stakedData[id];
+
+                // Add to back of selling queue
+                _addToSellingQueue(sender, id);
+
+                // Update ERC20 balances for this token
+                
+                 stakedERC20TokenBank[sender] -= units;
+                 balanceOf[sender] += units;
+            }
+        }
+
+        emit BatchNFTUnstaked(sender, ids_);
+        return true;
     }
 
 } 

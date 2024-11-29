@@ -23,6 +23,11 @@ interface INGU505Base is IERC165 {
     /// @notice Emitted when approval is granted for token spending
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
+    /// @notice Emitted when an NFT is minted
+    /// @param to The recipient address
+    /// @param id The NFT token ID
+    event ERC721Minted(address indexed to, uint256 indexed id);
+
     // Additional Events
     /// @notice Emitted when multiple token operations occur
     /// @param from The sender address
