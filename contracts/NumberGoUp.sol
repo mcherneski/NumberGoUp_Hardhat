@@ -7,13 +7,31 @@ import {ERC404UniswapV3Exempt} from "./extensions/ERC404UniswapV3Exempt.sol";
 import {NGU505Staking} from "./NGU505Staking.sol";
 import {NGU505Base} from "./NGU505Base.sol";
 
+/// @title NumberGoUp Token Contract
+/// @notice Implementation of the NGU token with ERC404, staking, and Uniswap V3 integration
+/// @dev Extends NGU505Staking and ERC404UniswapV3Exempt for full functionality
 contract NumberGoUp is NGU505Staking, ERC404UniswapV3Exempt, Ownable {
+    /// @notice Base URI for token metadata
     string public _uriBase = "https://ipfs.io/ipfs/QmUMUSjDwvMqgbPneHnvpQAt8cEBDEDgDZUyYM93qazLga/";
+    
+    /// @notice Number of different token variants
     uint256 public constant variants = 5;
+    
     using Strings for uint256;
 
+    /// @notice Emitted when the base URI is updated
+    /// @param newBase The new base URI
     event URIBaseUpdated(string newBase);
 
+    /// @notice Initializes the NumberGoUp token with its core parameters
+    /// @param name_ Token name
+    /// @param symbol_ Token symbol
+    /// @param decimals_ Number of decimals for ERC20 functionality
+    /// @param maxTotalSupplyERC20_ Maximum total supply of ERC20 tokens
+    /// @param initialOwner_ Address of the initial contract owner
+    /// @param initialMintRecipient_ Address to receive the initial token mint
+    /// @param uniswapSwapRouter_ Address of the Uniswap V3 router
+    /// @param uniswapV3NonfungiblePositionManager_ Address of the Uniswap V3 position manager
     constructor(
         string memory name_,
         string memory symbol_,
@@ -35,6 +53,10 @@ contract NumberGoUp is NGU505Staking, ERC404UniswapV3Exempt, Ownable {
         _mintERC20(initialMintRecipient_, maxTotalSupplyERC20_ * units);
     }
 
+    /// @notice Returns the metadata URI for a specific token ID
+    /// @dev Implements rarity tiers based on token ID
+    /// @param id The token ID to get the URI for
+    /// @return The metadata URI string
     function tokenURI(uint256 id) public view override returns (string memory) {
         if (_getOwnerOf(id) == address(0)) revert InvalidTokenId();
         
@@ -60,7 +82,10 @@ contract NumberGoUp is NGU505Staking, ERC404UniswapV3Exempt, Ownable {
         return string(abi.encodePacked(_uriBase, dString, ".json"));
     }
 
-    function setURIBase(string memory newBase_) external onlyOwner {
+    /// @notice Updates the base URI for token metadata
+    /// @dev Only callable by contract owner
+    /// @param newBase_ The new base URI to set
+    function setURIBase(string calldata newBase_) external onlyOwner {
         _uriBase = newBase_;
         emit URIBaseUpdated(newBase_);
     }

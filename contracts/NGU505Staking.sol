@@ -3,8 +3,10 @@ pragma solidity ^0.8.0;
 
 import "./NGU505Base.sol";
 import {INGU505Staking} from "./interfaces/INGU505Staking.sol";
+import {DoubleEndedQueue} from "./lib/DoubleEndedQueue.sol";
 
 abstract contract NGU505Staking is NGU505Base, INGU505Staking {
+    using DoubleEndedQueue for DoubleEndedQueue.Uint256Deque;
 
     // Add bitmask constants for staked token tracking
     uint256 private constant _BITMASK_ADDRESS = (1 << 160) - 1;
@@ -54,217 +56,76 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
         }
     }
 
-    function stakeNFT(uint256 id_) public virtual override nonReentrant returns (bool) {
-        if (msg.sender == address(0)) revert InvalidSender();
-        if (erc721TransferExempt(msg.sender)) revert InvalidStakingExemption();
-        if (balanceOf[msg.sender] < units) revert StakerInsufficientBalance(units, balanceOf[msg.sender]);
-        // Check if the token is already staked
-        if (_getOwnerOfStakedId(id_) != address(0)) {
-            revert TokenAlreadyStaked(id_);
-        }
-        // ERC-20 Logic
-        unchecked {
-            balanceOf[msg.sender] -= units;
-            stakedERC20TokenBank[msg.sender] += units;
-        }
+    uint256 private constant MAX_BATCH_SIZE = 100;
 
-        // ERC-721 Logic
-        // 1. Remove from selling queue
-        _removeFromSellingQueue(msg.sender, id_);
-        
-        // 2. Add to staked array and update mappings
-        uint256 index = _staked[msg.sender].length;
-        _staked[msg.sender].push(id_);
-        _setStakedIndex(id_, index);
-        _setStakedIdOwner(id_, msg.sender);
-
-        emit NFTStaked(msg.sender, id_);
-        return true;
-    }
-
-    function unstakeNFT(uint256 id_) public virtual override nonReentrant returns (bool) {
-        address owner = _getOwnerOfStakedId(id_);
-        if (owner != msg.sender) revert NotTokenOwner();
-
-        uint256 stakedBalance = stakedERC20TokenBank[msg.sender];
-        if (stakedBalance < units) revert StakerInsufficientBalance(units, stakedBalance);
-        
-        // Remove from staked array and clear mappings
-        uint256 index = _getStakedIndex(id_);
-        uint256[] storage stakedArray = _staked[msg.sender];
-        uint256 lastIndex = stakedArray.length - 1;
-
-        if (index != lastIndex) {
-            uint256 lastTokenId = stakedArray[lastIndex];
-            stakedArray[index] = lastTokenId;
-            _setStakedIndex(lastTokenId, index);
-        }
-        stakedArray.pop();
-        delete _stakedData[id_];
-        // Add unstaked token to back of selling queue
-        _addToSellingQueue(msg.sender, id_);
-        // Finally handle ERC20 transfers
-        _setERC721TransferExempt(msg.sender, true);
-        unchecked {
-            stakedERC20TokenBank[msg.sender] -= units;
-            balanceOf[msg.sender] += units;
-        }
-        _setERC721TransferExempt(msg.sender, false);
-
-        emit NFTUnstaked(msg.sender, id_);
-        return true;
-    }
-
-    function stakeMultipleNFTs(uint256[] calldata ids_) public virtual override nonReentrant returns (bool) {
+    function stake(uint256[] calldata ids_) public virtual override nonReentrant returns (bool) {
         uint256 length = ids_.length;
         address sender = msg.sender;
         
         if (length == 0) revert EmptyStakingArray();
+        if (length > MAX_BATCH_SIZE) revert BatchSizeExceeded();
+        if (sender == address(0)) revert InvalidSender();
+        if (erc721TransferExempt(sender)) revert InvalidStakingExemption();
         
-        // OPTIMIZATION: Calculate total amount and check balance once
-        uint256 totalStakeAmount;
-        unchecked {
-            totalStakeAmount = length * units;  // Safe because length is bounded by array size
-        }
-        
+        // Calculate total amount and check balance once
+        uint256 totalStakeAmount = length * units;
         uint256 senderBalance = balanceOf[sender];
         if (senderBalance < totalStakeAmount) {
             revert StakerInsufficientBalance(totalStakeAmount, senderBalance);
         }
 
-        // OPTIMIZATION: Cache staked array length once
-        uint256 startingIndex = _staked[sender].length;
-
-        // Process one token at a time - ERC20 and ERC721 together
+        // Process tokens
         unchecked {
             for (uint256 i; i < length; ++i) {
                 uint256 id = ids_[i];
-                // Check if token is already staked by checking if _stakedData contains a non-zero value
+                // Validate token
                 if (_stakedData[id] != 0) revert TokenAlreadyStaked(id);
-                // Check ownership
                 if (_getOwnerOf(id) != sender) revert NotTokenOwner();
+                if (id == 0) revert TokenNotFound();
                 
-                // Move ERC20 to bank for this specific token
+                // Handle ERC20 balance changes
                 balanceOf[sender] -= units;
                 stakedERC20TokenBank[sender] += units;
 
                 // Remove from selling queue
-                _removeFromSellingQueue(sender, id);
+                if (_sellingQueue[sender].empty()) revert QueueEmpty();
+                _sellingQueue[sender].removeById(id);
 
-                // Add to staked array and update mappings in single operation
+                // Add to staked array and update mappings
                 _staked[sender].push(id);
-                
-                // Pack owner and index data in single storage write
                 uint256 data;
                 assembly {
                     data := add(
                         and(sender, _BITMASK_ADDRESS),
-                        and(shl(160, add(startingIndex, i)), _BITMASK_OWNED_INDEX)
+                        and(shl(160, i), _BITMASK_OWNED_INDEX)
                     )
                 }
                 _stakedData[id] = data;
             }
         }
 
-        emit BatchNFTStaked(sender, ids_);
+        emit Staked(sender, ids_);
         return true;
     }
-    // Add this function with the other public view functions
-    function getStakedERC20Balance(
-        address owner_
-    ) public view virtual override returns (uint256) {
-        return stakedERC20TokenBank[owner_];
-    }
 
-    // Add this function to get all staked tokens for an address
-    function getStakedTokens(
-        address owner_
-    ) public view virtual override returns (uint256[] memory) {
-        return _staked[owner_];
-    }
-
-    // Add this function to handle removing staked tokens
-    function removeStakedFromQueueById(address owner, uint256 tokenId) internal {
-        // Input validation
-        if (owner == address(0)) revert InvalidSender();
-        if (tokenId == 0) revert InvalidTokenId();
-        
-        // Check if token exists first
-        if (tokenId > minted) revert NotTokenOwner();
-        
-        // Then check ownership
-        if (_getOwnerOf(tokenId) != owner) revert NotTokenOwner();
-        
-        // Check if already staked
-        uint256 stakedData = _stakedData[tokenId];
-        address stakedOwner;
-        assembly {
-            stakedOwner := and(stakedData, _BITMASK_ADDRESS)
-        }
-        if (stakedOwner != address(0)) {
-            revert TokenAlreadyStaked(tokenId);
-        }
-
-        // Get next token from queue
-        uint256 queuedToken = getNextQueueId(owner);
-        // Only try to remove if there's a valid token (not 0)
-        if (queuedToken != 0) {
-            _removeFromSellingQueue(owner, tokenId);
-        }
-
-        // Add to staked array
-        uint256 index = _staked[owner].length;
-        if (index > type(uint96).max) revert OwnedIndexOverflow();
-
-        _staked[owner].push(tokenId);
-        _setStakedIndex(tokenId, index);
-        _setStakedIdOwner(tokenId, owner);
-    }
-
-    /// @notice Get the total balance of an address including staked tokens
-    /// @param owner_ The address to check
-    /// @return The sum of ERC20 balance and staked balance
-    function _totalBalanceOf(address owner_) internal view returns (uint256) {
-        unchecked {
-            // Safe to use unchecked since we're adding two uint256 values
-            // that are each less than maxTotalSupplyERC20
-            return balanceOf[owner_] + stakedERC20TokenBank[owner_];
-        }
-    }
-
-    /// @notice External view function to get total balance
-    /// @param owner_ The address to check
-    /// @return The sum of ERC20 balance and staked balance
-    function totalBalanceOf(address owner_) public view returns (uint256) {
-        return _totalBalanceOf(owner_);
-    }
-
-    function unstakeMultipleNFTs(uint256[] calldata ids_) public virtual nonReentrant returns (bool) {
+    function unstake(uint256[] calldata ids_) public virtual override nonReentrant returns (bool) {
         uint256 length = ids_.length;
         address sender = msg.sender;
         
         if (length == 0) revert EmptyStakingArray();
+        if (length > MAX_BATCH_SIZE) revert BatchSizeExceeded();
         
-        // Calculate total amount
-        uint256 totalUnstakeAmount;
-        unchecked {
-            totalUnstakeAmount = length * units;
-        }
-        
+        uint256 totalUnstakeAmount = length * units;
         uint256 stakedBalance = stakedERC20TokenBank[sender];
         if (stakedBalance < totalUnstakeAmount) {
             revert StakerInsufficientBalance(totalUnstakeAmount, stakedBalance);
         }
 
-        // Process one token at a time
         unchecked {
             for (uint256 i; i < length; ++i) {
                 uint256 id = ids_[i];
-                
-                // Verify ownership of staked token
                 if (_getOwnerOfStakedId(id) != sender) revert NotTokenOwner();
 
-                // Remove from staked array and clear mappings
                 uint256 index = _getStakedIndex(id);
                 uint256[] storage stakedArray = _staked[sender];
                 uint256 lastIndex = stakedArray.length - 1;
@@ -277,18 +138,41 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
                 stakedArray.pop();
                 delete _stakedData[id];
 
-                // Add to back of selling queue
-                _addToSellingQueue(sender, id);
-
-                // Update ERC20 balances for this token
+                // Add to selling queue
+                if (id != 0) {
+                    _sellingQueue[sender].pushBack(id);
+                }
                 
-                 stakedERC20TokenBank[sender] -= units;
-                 balanceOf[sender] += units;
+                stakedERC20TokenBank[sender] -= units;
+                balanceOf[sender] += units;
             }
         }
 
-        emit BatchNFTUnstaked(sender, ids_);
+        emit Unstaked(sender, ids_);
         return true;
+    }
+
+    function getStakedERC20Balance(
+        address owner_
+    ) public view virtual override returns (uint256) {
+        return stakedERC20TokenBank[owner_];
+    }
+
+    function getStakedTokens(
+        address owner_
+    ) public view virtual override returns (uint256[] memory) {
+        return _staked[owner_];
+    }
+
+    /// @notice Get the total balance of an address including staked tokens
+    /// @param owner_ The address to check
+    /// @return The sum of ERC20 balance and staked balance
+    function totalBalanceOf(address owner_) public view returns (uint256) {
+        unchecked {
+            // Safe to use unchecked since we're adding two uint256 values
+            // that are each less than maxTotalSupplyERC20
+            return balanceOf[owner_] + stakedERC20TokenBank[owner_];
+        }
     }
 
 } 

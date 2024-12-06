@@ -5,13 +5,15 @@ import {INGU505Base} from "./interfaces/INGU505Base.sol";
 import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/interfaces/IERC721Receiver.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {DoubleEndedQueue} from "./lib/DoubleEndedQueue.sol";
 
-abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
+abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     using DoubleEndedQueue for DoubleEndedQueue.Uint256Deque;
 
-    // ============ Storage ============
-    // Core state variables
+    bytes32 public constant EXEMPTION_MANAGER_ROLE = keccak256("EXEMPTION_MANAGER_ROLE");
+
+    // Core state variables - packed for gas optimization
     string public name;
     string public symbol;
     uint8 public immutable decimals;
@@ -24,24 +26,22 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
     uint256 internal immutable _INITIAL_CHAIN_ID;
     bytes32 internal immutable _INITIAL_DOMAIN_SEPARATOR;
 
-    // Core mappings
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
     mapping(address => bool) internal _erc721TransferExempt;
     mapping(address => uint256) public nonces;
 
-    // Ownership data
     mapping(address => uint256[]) private _owned;
     mapping(uint256 => uint256) private _ownedData;
 
-    // Bitmask constants
     uint256 private constant _BITMASK_ADDRESS = (1 << 160) - 1;
     uint256 private constant _BITMASK_OWNED_INDEX = ((1 << 96) - 1) << 160;
 
-    // Add queue mapping
     mapping(address => DoubleEndedQueue.Uint256Deque) internal _sellingQueue;
 
-    // ============ Constructor ============
+    /// @notice Maximum number of tokens that can be returned by getQueueTokens
+    uint256 public constant MAX_QUEUE_RETURN_SIZE = 100;
+
     constructor(
         string memory name_,
         string memory symbol_,
@@ -60,6 +60,11 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
 
         _INITIAL_CHAIN_ID = block.chainid;
         _INITIAL_DOMAIN_SEPARATOR = _computeDomainSeparator();
+
+        // Setup initial roles
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(EXEMPTION_MANAGER_ROLE, msg.sender);
+        _setERC721TransferExempt(msg.sender, true);
     }
 
     // ============ External View Functions ============
@@ -128,10 +133,6 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         return true;
     }
 
-    function setSelfERC721TransferExempt(bool state) external virtual override {
-        _setERC721TransferExempt(msg.sender, state);
-    }
-
     // ============ Internal Mint/Burn Functions ============
     function _mintERC20(address to_, uint256 value_) internal virtual {
         if (to_ == address(0)) revert InvalidRecipient();
@@ -162,7 +163,9 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
             _owned[to_].push(id);
             _setOwnerOf(id, to_);
             _setOwnedIndex(id, _owned[to_].length - 1);
-            _addToSellingQueue(to_, id);
+            if (id != 0) {
+                _sellingQueue[to_].pushBack(id);
+            }
         }
         emit ERC721Minted(to_, id);
     }
@@ -199,12 +202,9 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
     }
 
     function _withdrawAndBurnERC721(address from_) internal virtual {
-        // Get and validate token from queue
+        if (_sellingQueue[from_].empty()) revert QueueEmpty();
         uint256 tokenId = _sellingQueue[from_].popFront();
-        if (tokenId == 0) revert QueueEmpty();
         
-        emit QueueOperation("Getting from queue for burn", tokenId);
-
         // Clean up ownership data
         _removeFromOwned(from_, tokenId);
         delete _ownedData[tokenId];
@@ -220,8 +220,8 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         
         if (from_ != address(0)) {
             // Get tokenId from queue
-            tokenId = getNextQueueId(from_);
-            if (tokenId == 0) revert QueueEmpty();
+            if (_sellingQueue[from_].empty()) revert QueueEmpty();
+            tokenId = _sellingQueue[from_].front();
             
             // If burning, use dedicated burn function
             if (to_ == address(0)) {
@@ -230,8 +230,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
             }
             
             // Otherwise handle normal transfer
-            tokenId =_sellingQueue[from_].popFront();
-            emit QueueOperation("Getting from queue for transfer", tokenId);
+            tokenId = _sellingQueue[from_].popFront();
             _removeFromOwned(from_, tokenId);
             delete _ownedData[tokenId];
         }
@@ -243,7 +242,9 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
             _setOwnerOf(tokenId, to_);
             _setOwnedIndex(tokenId, index);
             
-            _addToSellingQueue(to_, tokenId);
+            if (tokenId != 0) {
+                _sellingQueue[to_].pushBack(tokenId);
+            }
         }
 
         emit ERC721Transfer(from_, to_, tokenId);
@@ -257,38 +258,14 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         _setOwnedIndex(tokenId_, index);
     }
 
-    // Add debug events
-    event DebugRemoval(
-        string message,
-        uint256 tokenId,
-        uint256 indexToRemove,
-        uint256 lastIndex,
-        uint256 lastTokenId
-    );
-
     function _removeFromOwned(address from_, uint256 tokenId_) internal {
         // Get current index of token to remove
-        uint256 indexToRemove = _getOwnedIndex(tokenId_);
+        uint256 indexToRemove = getOwnedIndex(tokenId_);
         uint256 lastIndex = _owned[from_].length - 1;
         uint256 lastTokenId = _owned[from_][lastIndex];
 
-        emit DebugRemoval(
-            "Removing token",
-            tokenId_,
-            indexToRemove,
-            lastIndex,
-            lastTokenId
-        );
-
         // If token to remove is not the last token
         if (indexToRemove != lastIndex) {
-            emit DebugRemoval(
-                "Moving last token",
-                lastTokenId,
-                indexToRemove,
-                lastIndex,
-                _owned[from_][indexToRemove]
-            );
             // Move last token to the removed position
             _owned[from_][indexToRemove] = lastTokenId;
             // Update the moved token's index in _ownedData
@@ -320,7 +297,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         _ownedData[tokenId_] = data;
     }
 
-    function _getOwnedIndex(uint256 tokenId_) internal view returns (uint256 index_) {
+    function getOwnedIndex(uint256 tokenId_) public view returns (uint256 index_) {
         uint256 data = _ownedData[tokenId_];
         assembly {
             index_ := shr(160, data)
@@ -463,7 +440,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
     // ============ Interface Support ============
     function supportsInterface(
         bytes4 interfaceId
-    ) public view virtual override returns (bool) {
+    ) public view virtual override(AccessControl, IERC165) returns (bool) {
         return interfaceId == type(INGU505Base).interfaceId ||
                interfaceId == type(IERC165).interfaceId;
     }
@@ -481,49 +458,51 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard {
         emit Transfer(address(0), to_, value_);
     }
 
-    // Queue management functions
-    event QueueOperation(string operation, uint256 tokenId);
-
-    function _addToSellingQueue(address owner_, uint256 tokenId_) internal {
-        emit QueueOperation("Adding to queue", tokenId_);
-        _sellingQueue[owner_].pushBack(tokenId_);
-    }
-
-    function getNextQueueId(address owner_) public view returns (uint256) {
-        if (_sellingQueue[owner_].empty()) {
-            return 0;
-        }
-        return _sellingQueue[owner_].front();
-    }
-
-    function getQueueLength(address owner_) public view virtual returns (uint256) {
-        return _sellingQueue[owner_].size();
-    }
-
-    function getIdAtQueueIndex(
-        address owner_,
-        uint128 index_
-    ) public view virtual returns (uint256) {
-        return _sellingQueue[owner_].at(index_);
-    }
-
-    function _removeFromSellingQueue(address owner_, uint256 tokenId_) internal {
-        _sellingQueue[owner_].removeById(tokenId_);
-    }
-
     function getOwnedTokens(address owner_) public view returns (uint256[] memory) {
         return _owned[owner_];
     }
 
-    // Add this public view function
-    function getOwnedIndex(uint256 tokenId_) public view returns (uint256) {
-        uint256 data = _ownedData[tokenId_];
-        uint256 index;
-        assembly {
-            index := shr(160, data)
-        }
-        return index;
+    /// @dev Sets ERC721 transfer exemption status using AccessControl
+    /// @dev Only callable by addresses with EXEMPTION_MANAGER_ROLE
+    /// @dev Updates internal _erc721TransferExempt mapping
+    function setERC721TransferExempt(address account_, bool value_) external onlyRole(EXEMPTION_MANAGER_ROLE) {
+        _setERC721TransferExempt(account_, value_);
     }
 
-    event Debug(string message, uint256 value);
+    /// @dev Grants EXEMPTION_MANAGER_ROLE using OpenZeppelin AccessControl
+    /// @dev Only callable by DEFAULT_ADMIN_ROLE
+    /// @dev Emits ExemptionManagerAdded event
+    function addExemptionManager(address account_) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        grantRole(EXEMPTION_MANAGER_ROLE, account_);
+        emit ExemptionManagerAdded(account_);
+    }
+
+    /// @dev Revokes EXEMPTION_MANAGER_ROLE using OpenZeppelin AccessControl
+    /// @dev Only callable by DEFAULT_ADMIN_ROLE
+    /// @dev Emits ExemptionManagerRemoved event
+    function removeExemptionManager(address account_) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        revokeRole(EXEMPTION_MANAGER_ROLE, account_);
+        emit ExemptionManagerRemoved(account_);
+    }
+
+    /// @dev Checks if address has EXEMPTION_MANAGER_ROLE using OpenZeppelin AccessControl
+    function isExemptionManager(address account_) external view returns (bool) {
+        return hasRole(EXEMPTION_MANAGER_ROLE, account_);
+    }
+
+    /// @notice Get tokens in the queue for an address in order
+    /// @param owner_ The address to get queue tokens for
+    /// @return Array of token IDs in queue order, limited to MAX_QUEUE_RETURN_SIZE
+    function getQueueTokens(address owner_) public view returns (uint256[] memory) {
+        DoubleEndedQueue.Uint256Deque storage queue = _sellingQueue[owner_];
+        uint256 length = queue.length();
+        uint256 returnSize = length > MAX_QUEUE_RETURN_SIZE ? MAX_QUEUE_RETURN_SIZE : length;
+        
+        uint256[] memory tokens = new uint256[](returnSize);
+        for (uint256 i = 0; i < returnSize; i++) {
+            tokens[i] = queue.at(i);
+        }
+        
+        return tokens;
+    }
 } 
