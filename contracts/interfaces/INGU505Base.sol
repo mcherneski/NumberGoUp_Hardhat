@@ -36,6 +36,11 @@ interface INGU505Base is IERC165 {
     /// @param account The address that was removed from the role
     event ExemptionManagerRemoved(address indexed account);
 
+    /// @notice Emitted when an address is set to be exempt from ERC721 transfer restrictions
+    /// @param account The address that was set
+    /// @param value True if the address is exempt, false if not
+    event ERC721TransferExemptSet(address indexed account, bool value);
+
     // Errors
     error NotFound();
     error SenderInsufficientBalance(uint256 required, uint256 available);
@@ -54,13 +59,14 @@ interface INGU505Base is IERC165 {
     error AlreadyExists();
     error MaxSupplyExceeded(uint256 currentSupply, uint256 maxSupply);
     error DecimalsTooLow();
-    error InvalidTransfer(address from, address to, string reason);
+    error InvalidTransfer();
     error TokenLocked(uint256 tokenId, uint256 unlockTime);
     error InvalidOperation(string reason);
     error BatchOperationFailed(uint256[] failedIds, string reason);
     error QueueEmpty();
     error QueueFull();
     error TokenNotFound();
+    error Unauthorized();
 
     // Core ERC20 functions
     function transfer(address to, uint256 value) external returns (bool);
@@ -121,7 +127,4 @@ interface INGU505Base is IERC165 {
     function nonces(address owner) external view returns (uint256);
     function DOMAIN_SEPARATOR() external view returns (bytes32);
     function maxTotalSupplyERC20() external view returns (uint256);
-
-    // Owned Token Management
-    function getOwnedTokens(address owner_) external view returns (uint256[] memory);
 } 

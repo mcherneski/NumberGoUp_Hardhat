@@ -18,8 +18,9 @@ const config: HardhatUserConfig = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 200
-          }
+            runs: 200,
+          },
+          viaIR: true
         }
       },
       {
@@ -36,7 +37,33 @@ const config: HardhatUserConfig = {
   networks: {
     hardhat: {
       allowUnlimitedContractSize: true, // For Uniswap V3 deployment
-      chainId: 31337
+      chainId: 31337,
+      gas: 30000000,
+      blockGasLimit: 30000000,
+      gasPrice: 8000000000,
+      mining: {
+        auto: true,
+        interval: 0,
+        mempool: {
+          order: "fifo"
+        }
+      }
+    },
+    localhost: {
+      url: "http://127.0.0.1:8545",
+      chainId: 31337,
+      gas: 30000000,
+      blockGasLimit: 30000000,
+      gasPrice: 8000000000,
+      allowUnlimitedContractSize: true
+    },
+    anvil: {
+      url: "http://127.0.0.1:8545",
+      accounts: {
+        mnemonic: "test test test test test test test test test test test junk"
+      },
+      chainId: 31337,
+      allowUnlimitedContractSize: true
     }
   },
   gasReporter: {

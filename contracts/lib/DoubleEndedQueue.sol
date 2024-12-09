@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // OpenZeppelin Contracts (last updated v5.0.0) (utils/structs/DoubleEndedQueue.sol)
 // Modified by Pandora Labs to support native uint256 operations
-// Modified by NGU with bitmasking for efficient storage as well as gamified mechanics.
+// Modified by NGU to support efficient value lookups
 pragma solidity ^0.8.20;
 
 /**
@@ -38,12 +38,6 @@ library DoubleEndedQueue {
   error NotFound();
 
   /**
-   * @dev Bitmask constants for efficient storage
-   */
-  uint256 private constant _BITMASK_VALUE = (1 << 128) - 1;              // First 128 bits for value
-  uint256 private constant _BITMASK_INDEX = ((1 << 128) - 1) << 128;     // Last 128 bits for index
-
-  /**
    * @dev Indices are 128 bits so begin and end are packed in a single storage slot for efficient access.
    *
    * Struct members have an underscore prefix indicating that they are "private" and should not be read or written to
@@ -55,7 +49,8 @@ library DoubleEndedQueue {
   struct Uint256Deque {
     uint128 _begin;
     uint128 _end;
-    mapping(uint128 => uint256) _data;       // Maps position to packed data (value + index)
+    mapping(uint128 index => uint256) _data;
+    mapping(uint256 value => uint128) _positions;  // Maps values to their positions for O(1) lookups
   }
 
   /**
@@ -64,20 +59,13 @@ library DoubleEndedQueue {
    * Reverts with {QueueFull} if the queue is full.
    */
   function pushBack(Uint256Deque storage deque, uint256 value) internal {
-    uint128 backIndex = deque._end;
-    if (backIndex + 1 == deque._begin) revert QueueFull();
-
-    // Pack value with its index
-    uint256 packedData;
-    assembly {
-      packedData := add(
-        and(value, _BITMASK_VALUE),                  // Store value in lower bits
-        and(shl(128, backIndex), _BITMASK_INDEX)     // Store index in upper bits
-      )
+    unchecked {
+      uint128 backIndex = deque._end;
+      if (backIndex + 1 == deque._begin) revert QueueFull();
+      deque._data[backIndex] = value;
+      deque._positions[value] = backIndex;  // Store position
+      deque._end = backIndex + 1;
     }
-    
-    deque._data[backIndex] = packedData;
-    deque._end = backIndex + 1;
   }
 
   /**
@@ -85,20 +73,18 @@ library DoubleEndedQueue {
    *
    * Reverts with {QueueEmpty} if the queue is empty.
    */
-  function popBack(Uint256Deque storage deque) internal returns (uint256 value) {
-    uint128 backIndex = deque._end;
-    if (backIndex == deque._begin) revert QueueEmpty();
-    
-    --backIndex;
-    uint256 packedData = deque._data[backIndex];
-    
-    // Extract value from packed data
-    assembly {
-      value := and(packedData, _BITMASK_VALUE)
+  function popBack(
+    Uint256Deque storage deque
+  ) internal returns (uint256 value) {
+    unchecked {
+      uint128 backIndex = deque._end;
+      if (backIndex == deque._begin) revert QueueEmpty();
+      --backIndex;
+      value = deque._data[backIndex];
+      delete deque._data[backIndex];
+      delete deque._positions[value];  // Clean up position
+      deque._end = backIndex;
     }
-    
-    delete deque._data[backIndex];
-    deque._end = backIndex;
   }
 
   /**
@@ -110,17 +96,8 @@ library DoubleEndedQueue {
     unchecked {
       uint128 frontIndex = deque._begin - 1;
       if (frontIndex == deque._end) revert QueueFull();
-
-      // Pack value with its index using bitmask pattern
-      uint256 packedData;
-      assembly {
-        packedData := add(
-          and(value, _BITMASK_VALUE),                  // Store value in lower bits
-          and(shl(128, frontIndex), _BITMASK_INDEX)    // Store index in upper bits
-        )
-      }
-      
-      deque._data[frontIndex] = packedData;
+      deque._data[frontIndex] = value;
+      deque._positions[value] = frontIndex;  // Store position
       deque._begin = frontIndex;
     }
   }
@@ -136,15 +113,9 @@ library DoubleEndedQueue {
     unchecked {
       uint128 frontIndex = deque._begin;
       if (frontIndex == deque._end) revert QueueEmpty();
-      
-      uint256 packedData = deque._data[frontIndex];
-      
-      // Extract value from packed data
-      assembly {
-        value := and(packedData, _BITMASK_VALUE)
-      }
-      
+      value = deque._data[frontIndex];
       delete deque._data[frontIndex];
+      delete deque._positions[value];  // Clean up position
       deque._begin = frontIndex + 1;
     }
   }
@@ -186,10 +157,9 @@ library DoubleEndedQueue {
     uint256 index
   ) internal view returns (uint256 value) {
     if (index >= length(deque)) revert QueueOutOfBounds();
-    
-    uint256 packedData = deque._data[deque._begin + uint128(index)];
-    assembly {
-      value := and(packedData, _BITMASK_VALUE)
+    // By construction, length is a uint128, so the check above ensures that index can be safely downcast to uint128
+    unchecked {
+      return deque._data[deque._begin + uint128(index)];
     }
   }
 
@@ -208,7 +178,9 @@ library DoubleEndedQueue {
    * @dev Returns the number of items in the queue.
    */
   function length(Uint256Deque storage deque) internal view returns (uint256) {
-    return uint256(deque._end - deque._begin);
+    unchecked {
+      return uint256(deque._end - deque._begin);
+    }
   }
 
   /**
@@ -218,41 +190,27 @@ library DoubleEndedQueue {
     return deque._end == deque._begin;
   }
 
-    /**
-     * @dev Returns the number of elements in the queue.
-     */
-    function size(Uint256Deque storage deque) internal view returns (uint256) {
-        unchecked {
-            return uint256(deque._end - deque._begin);
-        }
+  /**
+   * @dev Removes a specific value from the queue by using the positions mapping for O(1) lookup.
+   * Only needs to shift elements that come after the removed item.
+   * Reverts with NotFound if the value is not in the queue.
+   */
+  function removeById(Uint256Deque storage deque, uint256 targetValue) internal {
+    uint128 position = deque._positions[targetValue];
+    if (position == 0 && (empty(deque) || deque._data[0] != targetValue)) revert NotFound();
+    
+    unchecked {
+      // Shift subsequent elements
+      for (uint128 i = position; i < deque._end - 1; i++) {
+        uint256 nextValue = deque._data[i + 1];
+        deque._data[i] = nextValue;
+        deque._positions[nextValue] = i;  // Update position of shifted item
+      }
+      
+      // Clean up
+      delete deque._data[deque._end - 1];
+      delete deque._positions[targetValue];
+      deque._end--;
     }
-
-function removeById(Uint256Deque storage deque, uint256 targetValue) internal {
-    uint128 current = deque._begin;
-    uint128 end = deque._end;
-
-    while (current < end) {
-        uint256 packedData = deque._data[current];
-        uint256 value;
-        
-        // Extract value from packed data
-        assembly {
-            value := and(packedData, _BITMASK_VALUE)
-        }
-
-        if (value == targetValue) {
-            // Found the value, now shift everything after it
-            while (current < end - 1) {
-                deque._data[current] = deque._data[current + 1];
-                unchecked { ++current; }
-            }
-            delete deque._data[end - 1];
-            deque._end = end - 1;
-            return;
-        }
-        unchecked { ++current; }
-    }
-    revert NotFound();
-}
-
+  }
 }

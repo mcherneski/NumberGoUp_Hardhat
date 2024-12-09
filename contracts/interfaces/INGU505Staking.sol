@@ -40,6 +40,11 @@ interface INGU505Staking is IERC165 {
     /// @notice Thrown when non-owner attempts to stake/unstake
     error NotTokenOwner();
 
+    /// @notice Thrown when trying to transfer staked tokens
+    /// @param required The amount trying to transfer
+    /// @param available The available unstaked balance
+    error InsufficientUnstakedBalance(uint256 required, uint256 available);
+
     // View Functions
     /// @notice Get the staked ERC20 balance for an address
     /// @param owner_ The address to check
@@ -49,12 +54,12 @@ interface INGU505Staking is IERC165 {
     /// @notice Get all staked tokens for an address
     /// @param owner_ The address to check
     /// @return Array of token IDs staked by the owner
-    function getStakedTokens(address owner_) external view returns (uint256[] memory);
+    function getStakedERC721Tokens(address owner_) external view returns (uint256[] memory);
 
-    /// @notice Get the total balance of an address including staked tokens
+    /// @notice Get the total ERC20 balance of an address including staked tokens
     /// @param owner_ The address to check
     /// @return The sum of ERC20 balance and staked balance
-    function totalBalanceOf(address owner_) external view returns (uint256);
+    function erc20TotalBalanceOf(address owner_) external view returns (uint256);
 
     // State-Changing Functions
     /// @notice Stake NFTs

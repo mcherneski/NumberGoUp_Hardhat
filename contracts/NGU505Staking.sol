@@ -11,9 +11,8 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
     // Add bitmask constants for staked token tracking
     uint256 private constant _BITMASK_ADDRESS = (1 << 160) - 1;
     uint256 private constant _BITMASK_OWNED_INDEX = ((1 << 96) - 1) << 160;
-
     // State variables
-    mapping(address => uint256[]) private _staked;
+    mapping(address => uint256[]) public _staked;
     mapping(uint256 => uint256) private _stakedData;
     mapping(address => uint256) public stakedERC20TokenBank;
 
@@ -56,14 +55,14 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
         }
     }
 
-    uint256 private constant MAX_BATCH_SIZE = 100;
+    // uint256 private constant MAX_BATCH_SIZE = 100;
 
     function stake(uint256[] calldata ids_) public virtual override nonReentrant returns (bool) {
         uint256 length = ids_.length;
         address sender = msg.sender;
         
         if (length == 0) revert EmptyStakingArray();
-        if (length > MAX_BATCH_SIZE) revert BatchSizeExceeded();
+        // if (length > MAX_BATCH_SIZE) revert BatchSizeExceeded();
         if (sender == address(0)) revert InvalidSender();
         if (erc721TransferExempt(sender)) revert InvalidStakingExemption();
         
@@ -81,7 +80,6 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
                 // Validate token
                 if (_stakedData[id] != 0) revert TokenAlreadyStaked(id);
                 if (_getOwnerOf(id) != sender) revert NotTokenOwner();
-                if (id == 0) revert TokenNotFound();
                 
                 // Handle ERC20 balance changes
                 balanceOf[sender] -= units;
@@ -113,7 +111,7 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
         address sender = msg.sender;
         
         if (length == 0) revert EmptyStakingArray();
-        if (length > MAX_BATCH_SIZE) revert BatchSizeExceeded();
+        // if (length > MAX_BATCH_SIZE) revert BatchSizeExceeded();
         
         uint256 totalUnstakeAmount = length * units;
         uint256 stakedBalance = stakedERC20TokenBank[sender];
@@ -140,7 +138,7 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
 
                 // Add to selling queue
                 if (id != 0) {
-                    _sellingQueue[sender].pushBack(id);
+                    _sellingQueue[sender].pushFront(id);
                 }
                 
                 stakedERC20TokenBank[sender] -= units;
@@ -158,21 +156,33 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
         return stakedERC20TokenBank[owner_];
     }
 
-    function getStakedTokens(
+    function getStakedERC721Tokens(
         address owner_
     ) public view virtual override returns (uint256[] memory) {
         return _staked[owner_];
     }
 
-    /// @notice Get the total balance of an address including staked tokens
+    /// @notice Get the total ERC20 balance of an address including staked tokens
     /// @param owner_ The address to check
     /// @return The sum of ERC20 balance and staked balance
-    function totalBalanceOf(address owner_) public view returns (uint256) {
-        unchecked {
-            // Safe to use unchecked since we're adding two uint256 values
-            // that are each less than maxTotalSupplyERC20
-            return balanceOf[owner_] + stakedERC20TokenBank[owner_];
-        }
+    function erc20TotalBalanceOf(
+        address owner_
+    ) public view override returns (uint256) {
+        return balanceOf[owner_] + stakedERC20TokenBank[owner_];
+    }
+
+    // Add error for staked token transfers
+    error TokenStaked(uint256 tokenId);
+
+    // Remove transfer and transferFrom overrides since base contract handles everything
+    function _isTokenStaked(uint256 tokenId_) internal virtual returns (bool) {
+        return _getOwnerOfStakedId(tokenId_) != address(0);
+    }
+
+    // Add helper for getting NFT ID format
+    function getNFTId(uint256 tokenId_) public view returns (uint256) {
+        require(tokenId_ < (1 << (256 - 4)), "TokenId too large");
+        return (_currentSeries << (256 - 4)) | tokenId_;
     }
 
 } 
