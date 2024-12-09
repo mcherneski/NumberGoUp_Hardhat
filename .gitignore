@@ -16,6 +16,13 @@ node_modules
 # Hardhat Ignition default folder for deployments against a local node
 ignition/deployments/chain-31337
 
+agent_instructions.md 
+reminders.md 
+checkPoolAssets.ts.bak
+BatchSizeLimits.test.ts
+
+/scripts
+
 node_modules
 .env
 
