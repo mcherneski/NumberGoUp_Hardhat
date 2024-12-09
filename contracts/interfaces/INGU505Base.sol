@@ -21,6 +21,9 @@ interface INGU505Base is IERC165 {
     event ERC721Transfer(address indexed from, address indexed to, uint256 indexed id);
     
     /// @notice Emitted when approval is granted for token spending
+    /// @param owner The token owner
+    /// @param spender The approved spender
+    /// @param value The approved amount
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
     /// @notice Emitted when an NFT is minted
@@ -42,56 +45,159 @@ interface INGU505Base is IERC165 {
     event ERC721TransferExemptSet(address indexed account, bool value);
 
     // Errors
+    /// @notice Token ID not found
     error NotFound();
+    /// @notice Sender has insufficient balance for transfer
+    /// @param required Amount required
+    /// @param available Amount available
     error SenderInsufficientBalance(uint256 required, uint256 available);
+    /// @notice Insufficient allowance for transfer
+    /// @param requested Amount requested
+    /// @param available Amount available
     error InsufficientAllowance(uint256 requested, uint256 available);
+    /// @notice Invalid recipient address
     error InvalidRecipient();
+    /// @notice Invalid sender address
     error InvalidSender();
+    /// @notice Invalid spender address
     error InvalidSpender();
+    /// @notice Invalid approval operation
     error InvalidApproval();
+    /// @notice Maximum mint limit reached
     error MintLimitReached();
+    /// @notice Invalid exemption operation
     error InvalidExemption();
+    /// @notice Owned index overflow
     error OwnedIndexOverflow();
+    /// @notice Permit deadline has expired
     error PermitDeadlineExpired();
+    /// @notice Invalid signer for permit
     error InvalidSigner();
+    /// @notice Caller is not the owner
     error NotOwner();
+    /// @notice Invalid token ID
     error InvalidTokenId();
+    /// @notice Token already exists
     error AlreadyExists();
+    /// @notice Maximum supply exceeded
+    /// @param currentSupply Current total supply
+    /// @param maxSupply Maximum allowed supply
     error MaxSupplyExceeded(uint256 currentSupply, uint256 maxSupply);
+    /// @notice Decimals value too low
     error DecimalsTooLow();
+    /// @notice Invalid transfer operation
     error InvalidTransfer();
+    /// @notice Token is locked
+    /// @param tokenId ID of the locked token
+    /// @param unlockTime Time when token unlocks
     error TokenLocked(uint256 tokenId, uint256 unlockTime);
+    /// @notice Invalid operation
+    /// @param reason Description of why operation is invalid
     error InvalidOperation(string reason);
+    /// @notice Batch operation failed
+    /// @param failedIds List of token IDs that failed
+    /// @param reason Reason for failure
     error BatchOperationFailed(uint256[] failedIds, string reason);
+    /// @notice Queue is empty
     error QueueEmpty();
+    /// @notice Queue is full
     error QueueFull();
+    /// @notice Token not found in queue
     error TokenNotFound();
+    /// @notice Unauthorized operation
     error Unauthorized();
 
     // Core ERC20 functions
+    /// @notice Transfers tokens from sender to recipient
+    /// @param to The recipient address
+    /// @param value The amount to transfer
+    /// @return success True if the transfer succeeded
+    /// @dev Will automatically handle NFT transfers based on whole token amounts
     function transfer(address to, uint256 value) external returns (bool);
+
+    /// @notice Transfers tokens from one address to another
+    /// @param from The sender address
+    /// @param to The recipient address
+    /// @param value The amount to transfer
+    /// @return success True if the transfer succeeded
+    /// @dev Requires approval if sender is not msg.sender
     function transferFrom(address from, address to, uint256 value) external returns (bool);
+
+    /// @notice Approves an address to spend tokens
+    /// @param spender The address to approve
+    /// @param value The amount to approve
+    /// @return success True if the approval succeeded
     function approve(address spender, uint256 value) external returns (bool);
+
+    /// @notice Returns the amount of tokens approved for a spender
+    /// @param owner The token owner
+    /// @param spender The spender address
+    /// @return The amount approved
     function allowance(address owner, address spender) external view returns (uint256);
+
+    /// @notice Returns the total token supply
+    /// @return The total supply
     function totalSupply() external view returns (uint256);
+
+    /// @notice Returns the token balance of an address
+    /// @param account The address to query
+    /// @return The balance
     function balanceOf(address account) external view returns (uint256);
 
     // Core ERC721 functions
+    /// @notice Returns the owner of a specific NFT
+    /// @param tokenId The NFT token ID
+    /// @return The owner address
     function ownerOf(uint256 tokenId) external view returns (address);
+
+    /// @notice Returns the URI for a token's metadata
+    /// @param id The token ID
+    /// @return The metadata URI
     function tokenURI(uint256 id) external view returns (string memory);
+
+    /// @notice Returns the number of NFTs owned by an address
+    /// @param owner The address to query
+    /// @return The number of NFTs owned
     function erc721BalanceOf(address owner) external view returns (uint256);
+
+    /// @notice Returns the ERC20 balance of an address
+    /// @param owner The address to query
+    /// @return The ERC20 balance
     function erc20BalanceOf(address owner) external view returns (uint256);
+
+    /// @notice Returns the total number of NFTs
+    /// @return The total NFT supply
     function erc721TotalSupply() external view returns (uint256);
+
+    /// @notice Returns the total ERC20 supply
+    /// @return The total ERC20 supply
     function erc20TotalSupply() external view returns (uint256);
 
     // Base functions
+    /// @notice Returns the token name
+    /// @return The name
     function name() external view returns (string memory);
+
+    /// @notice Returns the token symbol
+    /// @return The symbol
     function symbol() external view returns (string memory);
+
+    /// @notice Returns the number of decimals
+    /// @return The decimals
     function decimals() external view returns (uint8);
+
+    /// @notice Returns the base unit (1 token in smallest units)
+    /// @return The base unit
     function units() external view returns (uint256);
+
+    /// @notice Returns the total number of NFTs minted
+    /// @return The number minted
     function minted() external view returns (uint256);
     
     // ERC721 Transfer Exemption
+    /// @notice Checks if an address is exempt from ERC721 transfer restrictions
+    /// @param target The address to check
+    /// @return True if exempt
     function erc721TransferExempt(address target) external view returns (bool);
     
     // Exemption Manager Functions
@@ -114,6 +220,14 @@ interface INGU505Base is IERC165 {
     function isExemptionManager(address account_) external view returns (bool);
     
     // EIP-2612 Permit
+    /// @notice EIP-2612 permit function for gasless approvals
+    /// @param owner The token owner
+    /// @param spender The spender to approve
+    /// @param value The amount to approve
+    /// @param deadline The deadline for the signature
+    /// @param v The recovery byte of the signature
+    /// @param r Half of the ECDSA signature pair
+    /// @param s Half of the ECDSA signature pair
     function permit(
         address owner,
         address spender,
@@ -124,7 +238,16 @@ interface INGU505Base is IERC165 {
         bytes32 s
     ) external;
     
+    /// @notice Returns the current nonce for an address
+    /// @param owner The address to query
+    /// @return The current nonce
     function nonces(address owner) external view returns (uint256);
+
+    /// @notice Returns the domain separator used in the permit signature
+    /// @return The domain separator
     function DOMAIN_SEPARATOR() external view returns (bytes32);
+
+    /// @notice Returns the maximum total supply of ERC20 tokens
+    /// @return The maximum supply
     function maxTotalSupplyERC20() external view returns (uint256);
 } 

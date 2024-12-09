@@ -30,6 +30,12 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
         _stakedData[id_] = data;
     }
 
+    function _validateAndPrepareStake(uint256 id, address sender) internal view {
+        // Check both conditions in a single function to ensure atomicity
+        if (_stakedData[id] != 0) revert TokenAlreadyStaked(id);
+        if (_getOwnerOf(id) != sender) revert NotTokenOwner();
+    }
+
     function _getStakedIndex(uint256 tokenId) internal view virtual returns (uint256 stakedIndex_) {
         uint256 data = _stakedData[tokenId];
         assembly {
@@ -77,9 +83,9 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
         unchecked {
             for (uint256 i; i < length; ++i) {
                 uint256 id = ids_[i];
-                // Validate token
-                if (_stakedData[id] != 0) revert TokenAlreadyStaked(id);
-                if (_getOwnerOf(id) != sender) revert NotTokenOwner();
+                
+                // Validate token atomically
+                _validateAndPrepareStake(id, sender);
                 
                 // Handle ERC20 balance changes
                 balanceOf[sender] -= units;
@@ -162,17 +168,11 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
         return _staked[owner_];
     }
 
-    /// @notice Get the total ERC20 balance of an address including staked tokens
-    /// @param owner_ The address to check
-    /// @return The sum of ERC20 balance and staked balance
     function erc20TotalBalanceOf(
         address owner_
     ) public view override returns (uint256) {
         return balanceOf[owner_] + stakedERC20TokenBank[owner_];
     }
-
-    // Add error for staked token transfers
-    error TokenStaked(uint256 tokenId);
 
     // Remove transfer and transferFrom overrides since base contract handles everything
     function _isTokenStaked(uint256 tokenId_) internal virtual returns (bool) {
@@ -184,5 +184,4 @@ abstract contract NGU505Staking is NGU505Base, INGU505Staking {
         require(tokenId_ < (1 << (256 - 4)), "TokenId too large");
         return (_currentSeries << (256 - 4)) | tokenId_;
     }
-
 } 

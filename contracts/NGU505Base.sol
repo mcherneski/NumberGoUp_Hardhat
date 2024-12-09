@@ -8,6 +8,9 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {DoubleEndedQueue} from "./lib/DoubleEndedQueue.sol";
 
+/// @title NGU505Base Contract
+/// @notice Base implementation of the NGU505 token standard
+/// @dev Implements ERC20 and ERC721 functionality with additional features
 abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     using DoubleEndedQueue for DoubleEndedQueue.Uint256Deque;
  
@@ -443,7 +446,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     }
 
     // ============ EIP-2612 Functions ============
-    function DOMAIN_SEPARATOR() public view virtual override returns (bytes32) {
+    function DOMAIN_SEPARATOR() public view virtual returns (bytes32) {
         return block.chainid == _INITIAL_CHAIN_ID
             ? _INITIAL_DOMAIN_SEPARATOR
             : _computeDomainSeparator();
@@ -511,14 +514,14 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     /// @dev Sets ERC721 transfer exemption status using AccessControl
     /// @dev Only callable by addresses with EXEMPTION_MANAGER_ROLE
     /// @dev Updates internal _erc721TransferExempt mapping
-    function setERC721TransferExempt(address account_, bool value_) external onlyRole(EXEMPTION_MANAGER_ROLE) {
+    function setERC721TransferExempt(address account_, bool value_) external virtual onlyRole(EXEMPTION_MANAGER_ROLE) {
         _setERC721TransferExempt(account_, value_);
     }
 
     /// @dev Grants EXEMPTION_MANAGER_ROLE using OpenZeppelin AccessControl
     /// @dev Only callable by DEFAULT_ADMIN_ROLE
     /// @dev Emits ExemptionManagerAdded event
-    function addExemptionManager(address account_) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function addExemptionManager(address account_) external virtual onlyRole(DEFAULT_ADMIN_ROLE) {
         grantRole(EXEMPTION_MANAGER_ROLE, account_);
         emit ExemptionManagerAdded(account_);
     }
@@ -526,13 +529,13 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     /// @dev Revokes EXEMPTION_MANAGER_ROLE using OpenZeppelin AccessControl
     /// @dev Only callable by DEFAULT_ADMIN_ROLE
     /// @dev Emits ExemptionManagerRemoved event
-    function removeExemptionManager(address account_) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function removeExemptionManager(address account_) external virtual onlyRole(DEFAULT_ADMIN_ROLE) {
         revokeRole(EXEMPTION_MANAGER_ROLE, account_);
         emit ExemptionManagerRemoved(account_);
     }
 
     /// @dev Checks if address has EXEMPTION_MANAGER_ROLE using OpenZeppelin AccessControl
-    function isExemptionManager(address account_) external view returns (bool) {
+    function isExemptionManager(address account_) external view virtual returns (bool) {
         return hasRole(EXEMPTION_MANAGER_ROLE, account_);
     }
 

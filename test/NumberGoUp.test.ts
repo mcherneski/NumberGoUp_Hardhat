@@ -84,12 +84,12 @@ describe("NumberGoUp", function () {
       
       // Transfer tokens to user1
       await numberGoUp.connect(owner).transfer(user1.address, amount);
-      console.log("\nInitial State:");
+      console.log("\nInitial State (after transfering 10 tokens to user1):");
       await logState(numberGoUp, user1.address, "User1");
       await logQueueState(numberGoUp, user1.address, "User1");
 
       // Transfer from user1 to user2
-      await numberGoUp.connect(user1).transfer(user2.address, amount);
+      await numberGoUp.connect(user1).transfer(user2.address, amount / 2n);
       
       console.log("\nFinal State:");
       await logState(numberGoUp, user1.address, "User1");
@@ -98,12 +98,12 @@ describe("NumberGoUp", function () {
       await logQueueState(numberGoUp, user2.address, "User2");
 
       // Verify balances
-      expect(await numberGoUp.balanceOf(user1.address)).to.equal(0n);
-      expect(await numberGoUp.balanceOf(user2.address)).to.equal(amount);
+      expect(await numberGoUp.balanceOf(user1.address)).to.equal(amount/2n);
+      expect(await numberGoUp.balanceOf(user2.address)).to.equal(amount/2n);
       
       // Verify NFT counts
-      expect(await numberGoUp.erc721BalanceOf(user1.address)).to.equal(0n);
-      expect(await numberGoUp.erc721BalanceOf(user2.address)).to.equal(10n);
+      expect(await numberGoUp.erc721BalanceOf(user1.address)).to.equal(5n);
+      expect(await numberGoUp.erc721BalanceOf(user2.address)).to.equal(5n);
     });
 
     it("Should handle simple fractional token transfer", async function() {

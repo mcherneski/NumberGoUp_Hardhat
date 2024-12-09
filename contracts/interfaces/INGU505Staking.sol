@@ -45,6 +45,10 @@ interface INGU505Staking is IERC165 {
     /// @param available The available unstaked balance
     error InsufficientUnstakedBalance(uint256 required, uint256 available);
 
+    /// @notice Thrown when a token is staked and cannot be transferred
+    /// @param tokenId The ID of the staked token
+    error TokenStaked(uint256 tokenId);
+
     // View Functions
     /// @notice Get the staked ERC20 balance for an address
     /// @param owner_ The address to check
@@ -61,14 +65,27 @@ interface INGU505Staking is IERC165 {
     /// @return The sum of ERC20 balance and staked balance
     function erc20TotalBalanceOf(address owner_) external view returns (uint256);
 
+    /// @notice Get the NFT ID format for a given token ID
+    /// @param tokenId_ The token ID to format
+    /// @return The formatted NFT ID
+    /// @dev Combines the current series with the token ID
+    function getNFTId(uint256 tokenId_) external view returns (uint256);
+
+    /// @notice Get the staked ERC20 token balance for an address
+    /// @param owner_ The address to check
+    /// @return The staked ERC20 balance
+    function stakedERC20TokenBank(address owner_) external view returns (uint256);
+
     // State-Changing Functions
     /// @notice Stake NFTs
     /// @param ids_ Array of token IDs to stake
     /// @return Success of the staking operation
+    /// @dev Will revert if any token is already staked or sender is exempt
     function stake(uint256[] calldata ids_) external returns (bool);
 
     /// @notice Unstake NFTs
     /// @param ids_ Array of token IDs to unstake
     /// @return Success of the unstaking operation
+    /// @dev Will revert if any token is not staked by sender
     function unstake(uint256[] calldata ids_) external returns (bool);
 } 

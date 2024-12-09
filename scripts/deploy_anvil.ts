@@ -144,8 +144,8 @@ async function main() {
   // Add initial liquidity
   const token0 = await pool.token0();
   const token1 = await pool.token1();
-  const NGU_AMOUNT = ethers.parseEther("6500"); // 6,500 NGU
-  const ETH_AMOUNT = ethers.parseEther("25.19"); // 25 ETH
+  const NGU_AMOUNT = ethers.parseEther("4500"); // 4,500 NGU
+  const ETH_AMOUNT = ethers.parseEther("5.90"); // 5.90 ETH
 
   console.log("\nToken addresses:");
   console.log("token0:", token0);
