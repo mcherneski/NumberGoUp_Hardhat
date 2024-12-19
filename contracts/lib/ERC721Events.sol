@@ -13,4 +13,5 @@ library ERC721Events {
     uint256 indexed id
   );
   event Transfer(address indexed from, address indexed to, uint256 indexed id);
+  event Burn(address indexed from, uint256 indexed id);
 }

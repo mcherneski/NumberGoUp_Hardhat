@@ -4,13 +4,12 @@ pragma solidity ^0.8.20;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {ERC404UniswapV3Exempt} from "./extensions/ERC404UniswapV3Exempt.sol";
-import {NGU505Staking} from "./NGU505Staking.sol";
 import {NGU505Base} from "./NGU505Base.sol";
 
 /// @title NumberGoUp Token Contract
 /// @notice Implementation of the NGU token with ERC404, staking, and Uniswap V3 integration
 /// @dev Extends NGU505Staking and ERC404UniswapV3Exempt for full functionality
-contract NumberGoUp is NGU505Staking, ERC404UniswapV3Exempt, Ownable {
+contract NumberGoUp is Ownable, NGU505Base, ERC404UniswapV3Exempt {
     /// @notice Base URI for token metadata
     string public _uriBase = "https://ipfs.io/ipfs/QmUMUSjDwvMqgbPneHnvpQAt8cEBDEDgDZUyYM93qazLga/";
     
@@ -43,11 +42,12 @@ contract NumberGoUp is NGU505Staking, ERC404UniswapV3Exempt, Ownable {
         address uniswapV3NonfungiblePositionManager_
     )
         NGU505Base(name_, symbol_, decimals_, maxTotalSupplyERC20_)
+        Ownable(initialOwner_)
         ERC404UniswapV3Exempt(
             uniswapSwapRouter_,
             uniswapV3NonfungiblePositionManager_
         )
-        Ownable(initialOwner_)
+        
     {
         _setERC721TransferExempt(initialMintRecipient_, true);
         _mintERC20(initialMintRecipient_, maxTotalSupplyERC20_ * units);
@@ -57,6 +57,7 @@ contract NumberGoUp is NGU505Staking, ERC404UniswapV3Exempt, Ownable {
     /// @dev Implements rarity tiers based on token ID
     /// @param id The token ID to get the URI for
     /// @return The metadata URI string
+
     function tokenURI(uint256 id) public view override returns (string memory) {
         if (_getOwnerOf(id) == address(0)) revert InvalidTokenId();
         

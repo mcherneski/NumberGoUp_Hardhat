@@ -39,8 +39,8 @@ const config: HardhatUserConfig = {
     hardhat: {
       allowUnlimitedContractSize: true, // For Uniswap V3 deployment
       chainId: 31337,
-      gas: 30000000,
-      blockGasLimit: 30000000,
+      gas: 50000000,
+      blockGasLimit: 50000000,
       gasPrice: 8000000000,
       mining: {
         auto: true,
@@ -53,8 +53,8 @@ const config: HardhatUserConfig = {
     localhost: {
       url: "http://127.0.0.1:8545",
       chainId: 31337,
-      gas: 30000000,
-      blockGasLimit: 30000000,
+      gas: 50000000,
+      blockGasLimit: 50000000,
       gasPrice: 8000000000,
       allowUnlimitedContractSize: true
     },
@@ -70,7 +70,9 @@ const config: HardhatUserConfig = {
       url: "https://sepolia.base.org",
       accounts: [PRIVATE_KEY],
       chainId: 84532,
-      gasPrice: "auto"
+      gasPrice: "auto",
+      gas: 5000000,
+      allowUnlimitedContractSize: true
     }
   },
   etherscan: {

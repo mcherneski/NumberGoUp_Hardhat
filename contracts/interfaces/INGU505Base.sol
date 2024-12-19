@@ -14,12 +14,6 @@ interface INGU505Base is IERC165 {
     /// @param value The amount of tokens transferred
     event Transfer(address indexed from, address indexed to, uint256 value);
     
-    /// @notice Emitted when an NFT is transferred
-    /// @param from The sender address
-    /// @param to The recipient address
-    /// @param id The NFT token ID
-    event ERC721Transfer(address indexed from, address indexed to, uint256 indexed id);
-    
     /// @notice Emitted when approval is granted for token spending
     /// @param owner The token owner
     /// @param spender The approved spender
