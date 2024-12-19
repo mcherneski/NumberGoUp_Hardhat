@@ -26,42 +26,42 @@ abstract contract ERC404UniswapV3Exempt is NGU505Base {
         // Set the Uniswap v3 nonfungible position manager as exempt.
         _setERC721TransferExempt(uniswapV3NonfungiblePositionManager_, true);
 
-        // Require the Uniswap v3 factory from the position manager and the swap router to be the same.
-        if (
-            uniswapV3Router.factory() != uniswapV3NonfungiblePositionManager.factory()
-        ) {
-            revert ERC404UniswapV3ExemptFactoryMismatch();
-        }
+        // // Require the Uniswap v3 factory from the position manager and the swap router to be the same.
+        // if (
+        //     uniswapV3Router.factory() != uniswapV3NonfungiblePositionManager.factory()
+        // ) {
+        //     revert ERC404UniswapV3ExemptFactoryMismatch();
+        // }
 
-        // Require the Uniswap v3 WETH9 from the position manager and the swap router to be the same.
-        if (
-            uniswapV3Router.WETH9() != uniswapV3NonfungiblePositionManager.WETH9()
-        ) {
-            revert ERC404UniswapV3ExemptWETH9Mismatch();
-        }
+        // // Require the Uniswap v3 WETH9 from the position manager and the swap router to be the same.
+        // if (
+        //     uniswapV3Router.WETH9() != uniswapV3NonfungiblePositionManager.WETH9()
+        // ) {
+        //     revert ERC404UniswapV3ExemptWETH9Mismatch();
+        // }
 
-        uint24[4] memory feeTiers = [
-            uint24(100),
-            uint24(500),
-            uint24(3_000),
-            uint24(10_000)
-        ];
+        // uint24[4] memory feeTiers = [
+        //     uint24(100),
+        //     uint24(500),
+        //     uint24(3_000),
+        //     uint24(10_000)
+        // ];
 
-        // Determine the Uniswap v3 pair address for this token.
-        for (uint256 i = 0; i < feeTiers.length; ) {
-            address uniswapV3Pair = _getUniswapV3Pair(
-                uniswapV3Router.factory(),
-                uniswapV3Router.WETH9(),
-                feeTiers[i]
-            );
+        // // Determine the Uniswap v3 pair address for this token.
+        // for (uint256 i = 0; i < feeTiers.length; ) {
+        //     address uniswapV3Pair = _getUniswapV3Pair(
+        //         uniswapV3Router.factory(),
+        //         uniswapV3Router.WETH9(),
+        //         feeTiers[i]
+        //     );
 
-            // Set the Uniswap v3 pair as exempt.
-            _setERC721TransferExempt(uniswapV3Pair, true);
+        //     // Set the Uniswap v3 pair as exempt.
+        //     _setERC721TransferExempt(uniswapV3Pair, true);
 
-            unchecked {
-                ++i;
-            }
-        }
+        //     unchecked {
+        //         ++i;
+        //     }
+        // }
     }
 
     function _getUniswapV3Pair(

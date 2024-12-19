@@ -8,10 +8,13 @@ import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/interfaces/IERC721Receiver.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {DoubleEndedQueue} from "./lib/DoubleEndedQueue.sol";
+
 
 abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
+    using DoubleEndedQueue for DoubleEndedQueue.Uint256Deque;
     bytes32 public constant EXEMPTION_MANAGER_ROLE = keccak256("EXEMPTION_MANAGER_ROLE");
-
+    
     // Core state variables - packed for gas optimization
     string public name;
     string public symbol;
@@ -31,9 +34,10 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     mapping(address => mapping(address => uint256)) public allowance;
     mapping(address => bool) internal _erc721TransferExempt;
 
-    mapping(address => uint256[]) public _owned;
+    // mapping(address => uint256[]) public _owned;
+    mapping(address => DoubleEndedQueue.Uint256Deque) private _owned;
     mapping(uint256 => uint256) internal _ownedData;
-    
+
     mapping(uint256 => address) public getApproved;
     mapping(address => mapping(address => bool)) public isApprovedForAll;
 
@@ -94,7 +98,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     }
 
     function erc721BalanceOf(address owner) public view virtual override returns (uint256) {
-        return _owned[owner].length;
+        return _owned[owner].length();
     }
 
     function maxTotalSupplyERC20() public view virtual override returns (uint256) {
@@ -156,7 +160,20 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         if (totalSupply + value_ > _maxTotalSupplyERC20) {
             revert MaxSupplyExceeded(totalSupply + value_, _maxTotalSupplyERC20);
         }
-        _transferERC20WithERC721(address(0), to_, value_);
+
+        // Update total supply and balances
+        totalSupply += value_;
+        balanceOf[to_] += value_;
+        emit ERC20Events.Transfer(address(0), to_, value_);
+
+        // If recipient is not exempt, mint NFTs
+        if (!erc721TransferExempt(to_)) {
+            uint256 tokensToMint = value_ / units;
+            for (uint256 i = 0; i < tokensToMint;) {
+                _mintERC721(to_);
+                unchecked { i++; }
+            }
+        }
     }
 
     function _mintERC721(address to_) internal virtual returns (uint256) {
@@ -227,14 +244,14 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         }
 
     function _withdrawAndBurnERC721(address from_) internal virtual {
-        uint256 tokenId = _owned[from_][0];
+        uint256 tokenId = _owned[from_].popFront();
         // Clean up ownership data
-        _removeFromOwnedById(from_, tokenId);
         delete _ownedData[tokenId];
 
         emit ERC721Events.Burn(from_, tokenId);
     }
 
+    /// @dev Transfer an NFT from one address to another. Handles the removal from the senders queue and addition to receipient's.
     function _transferERC721(
         address from_,
         address to_,
@@ -244,58 +261,46 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         if (from_ != address(0)) {
             delete getApproved[tokenId_];
         }
-
-        _removeFromOwnedById(from_, tokenId_);
-        _addToOwned(to_, tokenId_);
+        // For new tokens (from_ is address(0)), we don't need to remove
+        if (from_ != address(0)) {
+            _owned[from_].popFront();
+        }
+        _owned[to_].pushBack(tokenId_);
 
         emit ERC721Events.Transfer(from_, to_, tokenId_);
     }
 
     // ============ Internal Ownership Management ============
     function _addToOwned(address to_, uint256 tokenId_) internal {
-        uint256 index = _owned[to_].length;
-        _owned[to_].push(tokenId_);
+        uint256 position = _owned[to_].length();
+        _owned[to_].pushBack(tokenId_);
         _setOwnerOf(tokenId_, to_);
-        _setOwnedIndex(tokenId_, index);
+        _setOwnedIndex(tokenId_, position);
     }
 
     function _removeFromOwnedById(address from_, uint256 tokenId_) internal {
-        // Get current index of token to remove
-        uint256 indexToRemove = getOwnedIndex(tokenId_);
-        uint256 lastIndex = _owned[from_].length - 1;
-        uint256 lastTokenId = _owned[from_][lastIndex];
-
-        // If token to remove is not the last token
-        if (indexToRemove != lastIndex) {
-            // Move last token to the removed position
-            _owned[from_][indexToRemove] = lastTokenId;
-            // Update the moved token's index in _ownedData
-            _setOwnedIndex(lastTokenId, indexToRemove);
+        uint256 index = getOwnedIndex(tokenId_);
+        if (index == 0) {
+            // O(1) removal from front
+            _owned[from_].popFront();
+        } else {
+            // For other indices, shift elements
+            uint256 len = _owned[from_].length();
+            for (uint256 i = index; i < len - 1; i++) {
+                uint256 nextToken = _owned[from_].at(i + 1);
+                _owned[from_].removeById(nextToken);
+                _owned[from_].pushBack(nextToken);
+                _setOwnedIndex(nextToken, i);
+            }
+            _owned[from_].popBack();
         }
-
-        // Remove last element from array
-        _owned[from_].pop();
-        
-        // Clear removed token's data completely
         delete _ownedData[tokenId_];
     }
 
     function _removeFromOwnedByIndex(address owner, uint256 index) internal returns (uint256) {
-        uint256[] storage ownerTokens = _owned[owner];
-        uint256 lastTokenIndex = ownerTokens.length - 1;
-        
-        if (index != lastTokenIndex) {
-            // Move the last token to the index being removed
-            uint256 lastTokenId = ownerTokens[lastTokenIndex];
-            ownerTokens[index] = lastTokenId;
-            _setOwnedIndex(lastTokenId, index);
-        }
-        
-        // Remove the last element
-        uint256 id = ownerTokens[ownerTokens.length - 1];
-        ownerTokens.pop();
-        delete _ownedData[id];
-        return id;
+        uint256 tokenId = _owned[owner].at(index);
+        _removeFromOwnedById(owner, tokenId);
+        return tokenId;
     }
 
     function _getOwnerOf(uint256 tokenId_) internal view returns (address owner_) {
@@ -345,77 +350,55 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         uint256 fromBalanceBefore = balanceOf[from_];
         uint256 toBalanceBefore = balanceOf[to_];
 
-        // Cache exemption status
-        bool isFromExempt = erc721TransferExempt(from_);
-        bool isToExempt = erc721TransferExempt(to_);
-
         // Perform ERC20 transfer
         _transferERC20(from_, to_, value_);
+
+        // Preload exemption status for gas savings
+        bool isFromExempt = erc721TransferExempt(from_);
+        bool isToExempt = erc721TransferExempt(to_);
 
         // Case 1: Both exempt - no NFT operations needed
         if (isFromExempt && isToExempt) {
             return true;
         }
-        // Calculate whole tokens being transferred
-        uint256 wholeTokensTransferred = value_ / units;
-        
+
         // Case 2: Sender exempt, receiver not exempt - mint NFTs to receiver if needed
-        if (isFromExempt) {
+        if (isFromExempt && !isToExempt) {
             uint256 tokensToMint = (balanceOf[to_] / units) - (toBalanceBefore / units);
-            // Mint any needed NFTs to receiver
             for (uint256 i = 0; i < tokensToMint;) {
                 _mintERC721(to_);
-                unchecked {
-                    i++;
-                }
+                unchecked { i++; }
             }
+            return true;
         }
 
         // Case 3: Sender not exempt, receiver exempt - burn sender's NFTs if needed
-        if (isToExempt) {
-            uint256 senderNFTsToRemove = (fromBalanceBefore / units) - (balanceOf[from_] / units);
-            
-            // Remove required NFTs from sender
-            for (uint256 i = 0; i < senderNFTsToRemove;) {
-                _removeFromOwnedByIndex(from_, 0);
-                unchecked {
-                    i++;
-                }
+        if (!isFromExempt && isToExempt) {
+            uint256 tokensToWithdraw = (fromBalanceBefore / units) - (balanceOf[from_] / units);
+            for (uint256 i = 0; i < tokensToWithdraw;) {
+                _withdrawAndBurnERC721(from_);
+                unchecked { i++; }
             }
+            return true;
         }
+
         // Case 4: Neither exempt - handle both whole token transfers and fractional changes
-        if (!isFromExempt && !isToExempt) {
-            // First handle whole token transfers
-            uint256 wholeTokens = value_ / units; 
-            for (uint256 i = 0; i < wholeTokens;) {
-                uint256 tokenId = _owned[from_][0];
-                _transferERC721(from_, to_, tokenId);
-                unchecked {
-                    i++;
-                }
-            }
+        // First handle whole token transfers using FIFO order
+        uint256 wholeTokensTransferred = value_ / units;
+        for (uint256 i = 0; i < wholeTokensTransferred;) {
+            uint256 tokenId = _owned[from_].front();
+            _transferERC721(from_, to_, tokenId);
+            unchecked { i++; }
+        }
 
-            // Then handle fractional changes that might cause additional NFT changes
-            uint256 senderBalanceAfter = balanceOf[from_];
-            uint256 receiverBalanceAfter = balanceOf[to_];
+        // Check if sender loses an additional whole token due to fractional transfer
+        if ((fromBalanceBefore / units) - (balanceOf[from_] / units) > wholeTokensTransferred) {
+            _withdrawAndBurnERC721(from_);
+        }
 
-            // Check if sender lost an additional NFT due to remaining fraction being too small
-            if ((fromBalanceBefore / units) - (senderBalanceAfter / units) > wholeTokensTransferred) {
-                _removeFromOwnedByIndex(from_, 0);
-                
-                // Check if recipient needs this NFT due to their new balance
-                if ((receiverBalanceAfter / units) > (toBalanceBefore / units) + wholeTokensTransferred) {
-                    // Transfer the NFT if recipient needs it
-                    uint256 token = _mintERC721(to_);
-                    _addToOwned(to_, token);
-                    
-                }
-            }
-            // If receiver needs a new NFT and we haven't transferred one from sender
-            else if ((receiverBalanceAfter / units) > (toBalanceBefore / units + wholeTokensTransferred)) {
-                _mintERC721(to_);
-                
-            }
+        // Check if receiver gains an additional whole token due to fractional transfer
+        if ((balanceOf[to_] / units) - (toBalanceBefore / units) > wholeTokensTransferred) {
+            _mintERC721(to_);
         }
 
         return true;
@@ -568,7 +551,12 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     /// @notice Get all tokens owned by an address
     /// @param owner The address to check
     /// @return Array of token IDs owned by the address
-    function getOwnedTokens(address owner) public view returns (uint256[] memory) {
-        return _owned[owner];
+    function getOwnedNFTs(address owner) public view returns (uint256[] memory) {
+        uint256 len = _owned[owner].length();
+        uint256[] memory tokens = new uint256[](len);
+        for (uint256 i = 0; i < len; i++) {
+            tokens[i] = _owned[owner].at(i);
+        }
+        return tokens;
     }
 } 

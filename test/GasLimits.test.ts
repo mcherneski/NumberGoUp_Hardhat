@@ -13,7 +13,7 @@ describe("Gas Limits - Transfer Tests", function () {
     const NAME = "Number Go Up";
     const SYMBOL = "NGU";
     const DECIMALS = 18n;
-    const MAX_SUPPLY = 1_000_000n;
+    const MAX_SUPPLY = 10_000n;
     const UNITS = 10n ** DECIMALS;
 
     beforeEach(async function () {

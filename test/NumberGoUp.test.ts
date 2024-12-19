@@ -27,8 +27,8 @@ describe("NumberGoUp - Initial State", function () {
             MAX_SUPPLY,
             owner.address,
             owner.address,
-            addrs[0].address, // Factory
-            addrs[1].address  // Mock PositionManager
+            addrs[0].address, // SwapRouter
+            addrs[1].address  // PositionManager
         );
     });
 
@@ -116,14 +116,14 @@ describe("NumberGoUp - Initial State", function () {
             await numberGoUp.connect(owner).transfer(nonExempt2.address, MULTIPLE_TOKENS);
         });
 
-        describe("Non-Exempt to Non-Exempt Transfers", function () {
-            it("Should transfer single token and measure gas", async function () {
-                console.log("\nSingle Token Transfer (Non-Exempt → Non-Exempt):");
+        describe("1. Non-Exempt to Non-Exempt Transfers", function () {
+            it("1.1 Should transfer single token and measure gas", async function () {
+                console.log("\nTest 1.1: Single Token Transfer (Non-Exempt → Non-Exempt):");
                 
                 // Log initial state
                 console.log("\nInitial State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt2.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt2.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt2.address)));
 
@@ -132,9 +132,9 @@ describe("NumberGoUp - Initial State", function () {
                 console.log("\nGas used:", receipt?.gasUsed);
 
                 // Log final state
-                console.log("\nFinal State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt2.address)).map(n => Number(n)));
+                console.log("\nFinal State after transfering:", SINGLE_TOKEN, "tokens");
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt2.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt2.address)));
 
@@ -143,13 +143,13 @@ describe("NumberGoUp - Initial State", function () {
                     .to.equal(MULTIPLE_TOKENS + SINGLE_TOKEN);
             });
 
-            it("Should transfer multiple tokens and measure gas", async function () {
-                console.log("\nMultiple Token Transfer (Non-Exempt → Non-Exempt):");
+            it("1.2 Should transfer multiple tokens and measure gas", async function () {
+                console.log("\nTest 1.2: Multiple Token Transfer (Non-Exempt → Non-Exempt):");
                 
                 // Log initial state
                 console.log("\nInitial State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt2.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt2.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt2.address)));
 
@@ -158,9 +158,9 @@ describe("NumberGoUp - Initial State", function () {
                 console.log("\nGas used:", receipt?.gasUsed);
 
                 // Log final state
-                console.log("\nFinal State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt2.address)).map(n => Number(n)));
+                console.log("\nFinal State after transfering:", MULTIPLE_TOKENS, "tokens");
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt2.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt2.address)));
 
@@ -170,14 +170,14 @@ describe("NumberGoUp - Initial State", function () {
             });
         });
 
-        describe("Exempt to Non-Exempt Transfers", function () {
-            it("Should transfer single token and measure gas", async function () {
-                console.log("\nSingle Token Transfer (Exempt → Non-Exempt):");
+        describe("2. Exempt to Non-Exempt Transfers", function () {
+            it("2.1 Should transfer single token and measure gas", async function () {
+                console.log("\nTest 2.1: Single Token Transfer (Exempt → Non-Exempt):");
                 
                 // Log initial state
                 console.log("\nInitial State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
 
@@ -186,9 +186,9 @@ describe("NumberGoUp - Initial State", function () {
                 console.log("\nGas used:", receipt?.gasUsed);
 
                 // Log final state
-                console.log("\nFinal State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
+                console.log("\nFinal State after transfering:", SINGLE_TOKEN, "tokens");
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
 
@@ -196,13 +196,13 @@ describe("NumberGoUp - Initial State", function () {
                     .to.equal(MULTIPLE_TOKENS + SINGLE_TOKEN);
             });
 
-            it("Should transfer multiple tokens and measure gas", async function () {
-                console.log("\nMultiple Token Transfer (Exempt → Non-Exempt):");
+            it("2.2 Should transfer multiple tokens and measure gas", async function () {
+                console.log("\nTest 2.2: Multiple Token Transfer (Exempt → Non-Exempt):");
                 
                 // Log initial state
                 console.log("\nInitial State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
 
@@ -211,9 +211,9 @@ describe("NumberGoUp - Initial State", function () {
                 console.log("\nGas used:", receipt?.gasUsed);
 
                 // Log final state
-                console.log("\nFinal State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
+                console.log("\nFinal State after transfering:", MULTIPLE_TOKENS, "tokens");
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
 
@@ -222,14 +222,14 @@ describe("NumberGoUp - Initial State", function () {
             });
         });
 
-        describe("Exempt to Exempt Transfers", function () {
-            it("Should transfer single token and measure gas", async function () {
-                console.log("\nSingle Token Transfer (Exempt → Exempt):");
+        describe("3. Exempt to Exempt Transfers", function () {
+            it("3.1 Should transfer single token and measure gas", async function () {
+                console.log("\nTest 3.1: Single Token Transfer (Exempt → Exempt):");
                 
                 // Log initial state
                 console.log("\nInitial State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(exempt2.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(exempt2.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt2.address)));
 
@@ -239,8 +239,8 @@ describe("NumberGoUp - Initial State", function () {
 
                 // Log final state
                 console.log("\nFinal State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(exempt2.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(exempt2.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt2.address)));
 
@@ -248,13 +248,13 @@ describe("NumberGoUp - Initial State", function () {
                     .to.equal(MULTIPLE_TOKENS + SINGLE_TOKEN);
             });
 
-            it("Should transfer multiple tokens and measure gas", async function () {
-                console.log("\nMultiple Token Transfer (Exempt → Exempt):");
+            it("3.2 Should transfer multiple tokens and measure gas", async function () {
+                console.log("\nTest 3.2: Multiple Token Transfer (Exempt → Exempt):");
                 
                 // Log initial state
                 console.log("\nInitial State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(exempt2.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(exempt2.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt2.address)));
 
@@ -264,8 +264,8 @@ describe("NumberGoUp - Initial State", function () {
 
                 // Log final state
                 console.log("\nFinal State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(exempt2.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(exempt2.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt2.address)));
 
@@ -274,14 +274,14 @@ describe("NumberGoUp - Initial State", function () {
             });
         });
 
-        describe("Non-Exempt to Exempt Transfers", function () {
-            it("Should transfer single token and measure gas", async function () {
-                console.log("\nSingle Token Transfer (Non-Exempt → Exempt):");
+        describe("4. Non-Exempt to Exempt Transfers", function () {
+            it("4.1 Should transfer single token and measure gas", async function () {
+                console.log("\nTest 4.1: Single Token Transfer (Non-Exempt → Exempt):");
                 
                 // Log initial state
                 console.log("\nInitial State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
 
@@ -292,8 +292,8 @@ describe("NumberGoUp - Initial State", function () {
 
                 // Log final state
                 console.log("\nFinal State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
 
@@ -301,13 +301,13 @@ describe("NumberGoUp - Initial State", function () {
                     .to.equal(initialBalance + SINGLE_TOKEN);
             });
 
-            it("Should transfer multiple tokens and measure gas", async function () {
-                console.log("\nMultiple Token Transfer (Non-Exempt → Exempt):");
+            it("4.2 Should transfer multiple tokens and measure gas", async function () {
+                console.log("\nTest 4.2: Multiple Token Transfer (Non-Exempt → Exempt):");
                 
                 // Log initial state
                 console.log("\nInitial State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
 
@@ -318,8 +318,8 @@ describe("NumberGoUp - Initial State", function () {
 
                 // Log final state
                 console.log("\nFinal State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
 
@@ -328,19 +328,19 @@ describe("NumberGoUp - Initial State", function () {
             });
         });
 
-        describe("Final State Check", function() {
-            it("Should log final owned arrays for all users", async function() {
-                console.log("\nFinal _owned arrays state:");
+        describe("5. Final State Check", function() {
+            it("5.1 Should log final owned arrays for all users", async function() {
+                console.log("\nTest 5.1: Final _owned arrays state:");
                 
                 // Log exempt users
-                const exempt1Owned = await numberGoUp.getOwnedTokens(exempt1.address);
-                const exempt2Owned = await numberGoUp.getOwnedTokens(exempt2.address);
+                const exempt1Owned = await numberGoUp.getOwnedNFTs(exempt1.address);
+                const exempt2Owned = await numberGoUp.getOwnedNFTs(exempt2.address);
                 console.log("Exempt1 (owner) owned tokens:", exempt1Owned.map(n => Number(n)));
                 console.log("Exempt2 owned tokens:", exempt2Owned.map(n => Number(n)));
                 
                 // Log non-exempt users
-                const nonExempt1Owned = await numberGoUp.getOwnedTokens(nonExempt1.address);
-                const nonExempt2Owned = await numberGoUp.getOwnedTokens(nonExempt2.address);
+                const nonExempt1Owned = await numberGoUp.getOwnedNFTs(nonExempt1.address);
+                const nonExempt2Owned = await numberGoUp.getOwnedNFTs(nonExempt2.address);
                 console.log("NonExempt1 owned tokens:", nonExempt1Owned.map(n => Number(n)));
                 console.log("NonExempt2 owned tokens:", nonExempt2Owned.map(n => Number(n)));
                 
@@ -354,7 +354,7 @@ describe("NumberGoUp - Initial State", function () {
         });
     });
 
-    describe("Fractional Transfer Testing", function () {
+    describe("6. Fractional Transfer Testing", function () {
         let exempt1: SignerWithAddress;      // owner
         let exempt2: SignerWithAddress;      // another exempt
         let nonExempt1: SignerWithAddress;   // regular user
@@ -376,15 +376,15 @@ describe("NumberGoUp - Initial State", function () {
             await numberGoUp.connect(owner).transfer(nonExempt2.address, 2n * UNITS);   // 2 tokens
         });
 
-        describe("Non-Exempt to Non-Exempt Fractional Transfers", function () {
-            it("Should transfer half token and measure gas", async function () {
-                console.log("\nHalf Token Transfer (Non-Exempt → Non-Exempt):");
+        describe("6.1 Non-Exempt to Non-Exempt Fractional Transfers", function () {
+            it("6.1.1 Should transfer half token and measure gas", async function () {
+                console.log("\nTest 6.1.1: Half Token Transfer (Non-Exempt → Non-Exempt):");
                 // Each starts with 2 tokens
                 // Log initial state
                 console.log("\nInitial State:");
                 console.log('Half token amount:', HALF_TOKEN);
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt2.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt2.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt2.address)));
 
@@ -395,28 +395,28 @@ describe("NumberGoUp - Initial State", function () {
                 console.log("\nGas used:", receipt?.gasUsed);
 
                 // Log final state
-                console.log("\nFinal State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt2.address)).map(n => Number(n)));
+                console.log("\nFinal State after transfering:", HALF_TOKEN, "tokens");
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt2.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt2.address)));
 
                 
-                expect((await numberGoUp.getOwnedTokens(nonExempt1.address)).length).to.equal(1);
-                expect((await numberGoUp.getOwnedTokens(nonExempt2.address)).length).to.equal(2);
+                expect((await numberGoUp.getOwnedNFTs(nonExempt1.address)).length).to.equal(1);
+                expect((await numberGoUp.getOwnedNFTs(nonExempt2.address)).length).to.equal(2);
                 expect(await numberGoUp.balanceOf(nonExempt2.address)).to.equal((UNITS * 2n) + HALF_TOKEN);
                 expect(await numberGoUp.balanceOf(nonExempt1.address)).to.equal(UNITS + HALF_TOKEN);
             });
         });
 
-        describe("Exempt to Non-Exempt Fractional Transfers", function () {
-            it("Should transfer half token and measure gas", async function () {
-                console.log("\nHalf Token Transfer (Exempt → Non-Exempt):");
+        describe("6.2 Exempt to Non-Exempt Fractional Transfers", function () {
+            it("6.2.1 Should transfer half token and measure gas", async function () {
+                console.log("\nTest 6.2.1: Half Token Transfer (Exempt → Non-Exempt):");
                 
                 // Log initial state
                 console.log("\nInitial State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
 
@@ -425,25 +425,25 @@ describe("NumberGoUp - Initial State", function () {
                 console.log("\nGas used:", receipt?.gasUsed);
 
                 // Log final state
-                console.log("\nFinal State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
+                console.log("\nFinal State after transfering:", HALF_TOKEN, "tokens");
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
 
                 // Verify NFT ownership hasn't changed
-                expect((await numberGoUp.getOwnedTokens(nonExempt1.address)).length).to.equal(2);
+                expect((await numberGoUp.getOwnedNFTs(nonExempt1.address)).length).to.equal(2);
             });
         });
 
-        describe("Exempt to Exempt Fractional Transfers", function () {
-            it("Should transfer half token and measure gas", async function () {
-                console.log("\nHalf Token Transfer (Exempt → Exempt):");
+        describe("6.3 Exempt to Exempt Fractional Transfers", function () {
+            it("6.3.1 Should transfer half token and measure gas", async function () {
+                console.log("\nTest 6.3.1: Half Token Transfer (Exempt → Exempt):");
                 
                 // Log initial state
                 console.log("\nInitial State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(exempt2.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(exempt2.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt2.address)));
 
@@ -452,22 +452,22 @@ describe("NumberGoUp - Initial State", function () {
                 console.log("\nGas used:", receipt?.gasUsed);
 
                 // Log final state
-                console.log("\nFinal State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(exempt2.address)).map(n => Number(n)));
+                console.log("\nFinal State after transfering:", HALF_TOKEN, "tokens");
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(exempt2.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt2.address)));
             });
         });
 
-        describe("Non-Exempt to Exempt Fractional Transfers", function () {
-            it("Should transfer half token and measure gas", async function () {
-                console.log("\nHalf Token Transfer (Non-Exempt → Exempt):");
+        describe("6.4 Non-Exempt to Exempt Fractional Transfers", function () {
+            it("6.4.1 Should transfer half token and measure gas", async function () {
+                console.log("\nTest 6.4.1: Half Token Transfer (Non-Exempt → Exempt):");
                 
                 // Log initial state
                 console.log("\nInitial State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
 
@@ -477,21 +477,21 @@ describe("NumberGoUp - Initial State", function () {
                 console.log("\nGas used:", receipt?.gasUsed);
 
                 // Log final state
-                console.log("\nFinal State:");
-                console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(exempt1.address)).map(n => Number(n)));
+                console.log("\nFinal State after transfering:", HALF_TOKEN, "tokens");
+                console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+                console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(exempt1.address)).map(n => Number(n)));
                 console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
                 console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(exempt1.address)));
 
                 // Verify NFT ownership hasn't changed
-                expect((await numberGoUp.getOwnedTokens(nonExempt1.address)).length).to.equal(1);
-                expect((await numberGoUp.getOwnedTokens(exempt1.address)).length).to.equal(0);
+                expect((await numberGoUp.getOwnedNFTs(nonExempt1.address)).length).to.equal(1);
+                expect((await numberGoUp.getOwnedNFTs(exempt1.address)).length).to.equal(0);
                 expect(await numberGoUp.balanceOf(exempt1.address)).to.equal(initialBalance + HALF_TOKEN);
             });
         });
     });
 
-    describe("Mixed Whole and Fractional Transfers (Non-Exempt to Non-Exempt)", function () {
+    describe("7. Mixed Whole and Fractional Transfers (Non-Exempt to Non-Exempt)", function () {
         let exempt1: SignerWithAddress;      // owner
         let exempt2: SignerWithAddress;      // another exempt
         let nonExempt1: SignerWithAddress;   // regular user
@@ -518,13 +518,13 @@ describe("NumberGoUp - Initial State", function () {
             await numberGoUp.connect(owner).transfer(nonExempt1.address, UNITS * 10n);
         });
 
-        it("Should transfer 2.5 tokens correctly", async function () {
-            console.log("\n2.5 Token Transfer (Non-Exempt → Non-Exempt):");
+        it("7.1 Should transfer 2.5 tokens correctly", async function () {
+            console.log("\nTest 7.1: 2.5 Token Transfer (Non-Exempt → Non-Exempt):");
             
             // Log initial state
             console.log("\nInitial State:");
-            console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-            console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt2.address)).map(n => Number(n)));
+            console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+            console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt2.address)).map(n => Number(n)));
             console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
             console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt2.address)));
 
@@ -534,9 +534,9 @@ describe("NumberGoUp - Initial State", function () {
             console.log("\nGas used:", receipt?.gasUsed);
 
             // Log final state
-            console.log("\nFinal State:");
-            console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-            console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt2.address)).map(n => Number(n)));
+            console.log("\nFinal State after transfering:", amount, "tokens");
+            console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+            console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt2.address)).map(n => Number(n)));
             console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
             console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt2.address)));
             console.log('Receiver Balance: ', await numberGoUp.balanceOf(nonExempt1.address));
@@ -545,19 +545,19 @@ describe("NumberGoUp - Initial State", function () {
             expect(await numberGoUp.balanceOf(nonExempt1.address)).to.equal(UNITS * 75n / 10n); // 7.5 tokens left
 
             // Verify NFT counts (should transfer 2 NFTs)
-            const senderNFTs = await numberGoUp.getOwnedTokens(nonExempt1.address);
-            const receiverNFTs = await numberGoUp.getOwnedTokens(nonExempt2.address);
-            expect(senderNFTs.length).to.equal(7); // 10 - 3 (2.5 transfered) = 7 NFTs
-            expect(receiverNFTs.length).to.equal(2); // Received 2 NFTs
+            const senderNFTs = await numberGoUp.getOwnedNFTs(nonExempt1.address);
+            const receiverNFTs = await numberGoUp.getOwnedNFTs(nonExempt2.address);
+            expect(senderNFTs.length).to.equal(7); // 10 - 2.5 = 7.5. Floor 7.5 = 7 NFTs
+            expect(receiverNFTs.length).to.equal(2); // Received 2.5. Floor 2.5 = 2 NFTs
         });
 
-        it("Should transfer 1.3 tokens correctly", async function () {
-            console.log("\n1.3 Token Transfer (Non-Exempt → Non-Exempt):");
+        it("7.2 Should transfer 1.3 tokens correctly", async function () {
+            console.log("\nTest 7.2: 1.3 Token Transfer (Non-Exempt → Non-Exempt):");
             
             // Log initial state
             console.log("\nInitial State:");
-            console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-            console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt2.address)).map(n => Number(n)));
+            console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+            console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt2.address)).map(n => Number(n)));
             console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
             console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt2.address)));
 
@@ -567,30 +567,30 @@ describe("NumberGoUp - Initial State", function () {
             console.log("\nGas used:", receipt?.gasUsed);
 
             // Log final state
-            console.log("\nFinal State:");
-            console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-            console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt2.address)).map(n => Number(n)));
+            console.log("\nFinal State after transfering:", amount, "tokens");
+            console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+            console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt2.address)).map(n => Number(n)));
             console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
             console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt2.address)));
 
             // Verify balances
             expect(await numberGoUp.balanceOf(nonExempt2.address)).to.equal(amount);
-            expect(await numberGoUp.balanceOf(nonExempt1.address)).to.equal(UNITS * 87n / 10n); // 8.7 tokens left
+            expect(await numberGoUp.balanceOf(nonExempt1.address)).to.equal(ethers.parseEther('8.7')); // 8.7 tokens left
 
-            // Verify NFT counts (should transfer 1 NFT)
-            const senderNFTs = await numberGoUp.getOwnedTokens(nonExempt1.address);
-            const receiverNFTs = await numberGoUp.getOwnedTokens(nonExempt2.address);
-            expect(senderNFTs.length).to.equal(8); // 10 - 1.3 = 8.7 | Floor(8.7) = 8.
-            expect(receiverNFTs.length).to.equal(1); // Received 1 NFT
+            // Verify NFT counts (should transfer 1 NFT since number is 1.3)
+            const senderNFTs = await numberGoUp.getOwnedNFTs(nonExempt1.address);
+            const receiverNFTs = await numberGoUp.getOwnedNFTs(nonExempt2.address);
+            expect(senderNFTs.length).to.equal(8); // 10 - 1.3 = 8.7. Floor 8.7 = 8 NFTs
+            expect(receiverNFTs.length).to.equal(1); // Received 1.3. Floor 1.3 = 1 NFT
         });
 
-        it("Should transfer 8.6 tokens correctly", async function () {
-            console.log("\n8.6 Token Transfer (Non-Exempt → Non-Exempt):");
+        it("7.3 Should transfer 8.6 tokens correctly", async function () {
+            console.log("\nTest 7.3: 8.6 Token Transfer (Non-Exempt → Non-Exempt):");
             
             // Log initial state
             console.log("\nInitial State:");
-            console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-            console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt2.address)).map(n => Number(n)));
+            console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+            console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt2.address)).map(n => Number(n)));
             console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
             console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt2.address)));
 
@@ -598,23 +598,24 @@ describe("NumberGoUp - Initial State", function () {
             const tx = await numberGoUp.connect(nonExempt1).transfer(nonExempt2.address, amount);
             const receipt = await tx.wait();
             console.log("\nGas used:", receipt?.gasUsed);
+            // nonExempt1 should have 1.4 tokens left
 
             // Log final state
-            console.log("\nFinal State:");
-            console.log("Sender owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt1.address)).map(n => Number(n)));
-            console.log("Receiver owned tokens:", (await numberGoUp.getOwnedTokens(nonExempt2.address)).map(n => Number(n)));
+            console.log("\nFinal State after transfering:", amount, "tokens");
+            console.log("Sender owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt1.address)).map(n => Number(n)));
+            console.log("Receiver owned tokens:", (await numberGoUp.getOwnedNFTs(nonExempt2.address)).map(n => Number(n)));
             console.log("Sender balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt1.address)));
             console.log("Receiver balance:", ethers.formatEther(await numberGoUp.balanceOf(nonExempt2.address)));
 
             // Verify balances
             expect(await numberGoUp.balanceOf(nonExempt2.address)).to.equal(amount);
-            expect(await numberGoUp.balanceOf(nonExempt1.address)).to.equal(UNITS * 14n / 10n); // 1.4 tokens left
+            expect(await numberGoUp.balanceOf(nonExempt1.address)).to.equal(ethers.parseEther('1.4')); // 1.4 tokens left
 
             // Verify NFT counts (should transfer 8 NFTs)
-            const senderNFTs = await numberGoUp.getOwnedTokens(nonExempt1.address);
-            const receiverNFTs = await numberGoUp.getOwnedTokens(nonExempt2.address);
-            expect(senderNFTs.length).to.equal(1); // 10 - 8.6 = 1.4 | Floor(1.4) = 1.
-            expect(receiverNFTs.length).to.equal(8); // Received 8 NFTs
+            const senderNFTs = await numberGoUp.getOwnedNFTs(nonExempt1.address);
+            const receiverNFTs = await numberGoUp.getOwnedNFTs(nonExempt2.address);
+            expect(senderNFTs.length).to.equal(1); // 10 - 8.6 = 1.4. Floor 1.4 = 1 NFTs
+            expect(receiverNFTs.length).to.equal(8); // Received 8.6. Floor 8.6 = 8 NFTs
         });
     });
 });
