@@ -71,11 +71,6 @@ interface INGU505Staking is IERC165 {
     /// @dev Combines the current series with the token ID
     function getNFTId(uint256 tokenId_) external view returns (uint256);
 
-    /// @notice Get the staked ERC20 token balance for an address
-    /// @param owner_ The address to check
-    /// @return The staked ERC20 balance
-    function stakedERC20TokenBank(address owner_) external view returns (uint256);
-
     // State-Changing Functions
     /// @notice Stake NFTs
     /// @param ids_ Array of token IDs to stake

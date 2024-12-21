@@ -200,7 +200,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
             // Set up ownership
             _addToOwned(to_, nftId);
 
-            emit ERC721Minted(to_, nftId);
+            emit ERC721Events.Mint(to_, nftId);
             return nftId;
         }
     }
