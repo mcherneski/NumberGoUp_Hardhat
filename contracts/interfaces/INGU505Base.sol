@@ -100,6 +100,8 @@ interface INGU505Base is IERC165 {
     error TokenNotFound();
     /// @notice Unauthorized operation
     error Unauthorized();
+    error InvalidOperator();
+    error UnsafeRecipient();
 
     // Core ERC20 functions
     /// @notice Transfers tokens from sender to recipient

@@ -121,28 +121,83 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     function transferFrom(
         address from_,
         address to_,
-        uint256 value_
+        uint256 valueOrId_
     ) public virtual override nonReentrant returns (bool) {
         if (from_ == address(0)) revert InvalidSender();
         if (to_ == address(0)) revert InvalidRecipient();
 
-        // NFT transfers are only allowed through ERC20 transfers
-        if (_isNFTID(value_)) {
-            revert InvalidTransfer();  // Direct NFT transfers not allowed
+        // NFT transfers are only allowed through ERC20 transfers, this is for staking.
+        if (_isNFTID(valueOrId_)) {
+            // This is a staking operation. Users can't send NFTs to other users.
+            erc721TransferFrom(from_, to_, valueOrId_);
+        } else {
+            return erc20TransferFrom(from_, to_, valueOrId_);
         }
+        return true;
+    }
 
-        // Check allowance for ERC20 transfer
+    function safeTransferFrom(
+        address from_,
+        address to_,
+        uint256 tokenId_
+    ) public virtual {
+        safeTransferFrom(from_, to_, tokenId_, "");
+    }
+
+    function safeTransferFrom(
+        address from_,
+        address to_,
+        uint256 tokenId_,
+        bytes memory data_
+    ) public virtual {
+        if (!_isNFTID(tokenId_)) {
+            revert InvalidTransfer();
+        }
+        transferFrom(from_, to_, tokenId_);
+
+        if (to_.code.length != 0 && IERC721Receiver(to_).onERC721Received(msg.sender, from_, tokenId_, data_) != IERC721Receiver.onERC721Received.selector) {
+            revert UnsafeRecipient();
+        }
+    }
+
+    function erc20TransferFrom(
+        address from_,
+        address to_,
+        uint256 value_
+    ) public virtual nonReentrant returns (bool) {
+        if (from_ == address(0)) { revert InvalidSender(); }
+        if (to_ == address(0)) { revert InvalidRecipient(); }
+
         uint256 allowed = allowance[from_][msg.sender];
-        if (allowed < value_) revert InsufficientAllowance(value_, allowed);
 
         if (allowed != type(uint256).max) {
             allowance[from_][msg.sender] = allowed - value_;
         }
 
-        // Handle ERC20 transfer which will automatically handle NFT
         return _transferERC20WithERC721(from_, to_, value_);
     }
 
+    function erc721TransferFrom(
+        address from_,
+        address to_,
+        uint256 tokenId_
+    ) public virtual {
+        if (from_ == address(0)) { revert InvalidSender(); }
+        if (to_ == address(0)) { revert InvalidRecipient(); }
+
+        if (from_ != _getOwnerOf(tokenId_)) {
+            revert Unauthorized();
+        }
+
+        if (msg.sender != from_ && msg.sender != getApproved[tokenId_]) {
+            revert Unauthorized();
+        }
+
+        _transferERC20(from_, to_, units);
+        _transferERC721(from_, to_, tokenId_);
+    }
+
+    // only works for erc20 approvals
     function approve(
         address spender_,
         uint256 value_
@@ -152,6 +207,16 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         allowance[msg.sender][spender_] = value_;
         emit Approval(msg.sender, spender_, value_);
         return true;
+    }
+
+    /// @notice Function for ERC-721 approvals
+    function setApprovalForAll(address operator_, bool approved_) public virtual {
+        // Prevent approvals to 0x0.
+        if (operator_ == address(0)) {
+            revert InvalidOperator();
+        }
+        isApprovedForAll[msg.sender][operator_] = approved_;
+        emit ERC721Events.ApprovalForAll(msg.sender, operator_, approved_);
     }
 
     // ============ Internal Mint/Burn Functions ============
@@ -257,13 +322,13 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         address to_,
         uint256 tokenId_
     ) internal virtual {
-        // Check ownership
         if (from_ != address(0)) {
             delete getApproved[tokenId_];
-        }
-        // For new tokens (from_ is address(0)), we don't need to remove
-        if (from_ != address(0)) {
-            _owned[from_].popFront();
+            if (_owned[from_].front() != tokenId_) {
+                _owned[from_].removeById(tokenId_);
+            } else {
+                _owned[from_].popFront();
+            }
         }
         _owned[to_].pushBack(tokenId_);
 
@@ -284,15 +349,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
             // O(1) removal from front
             _owned[from_].popFront();
         } else {
-            // For other indices, shift elements
-            uint256 len = _owned[from_].length();
-            for (uint256 i = index; i < len - 1; i++) {
-                uint256 nextToken = _owned[from_].at(i + 1);
-                _owned[from_].removeById(nextToken);
-                _owned[from_].pushBack(nextToken);
-                _setOwnedIndex(nextToken, i);
-            }
-            _owned[from_].popBack();
+            _owned[from_].removeById(tokenId_);
         }
         delete _ownedData[tokenId_];
     }
