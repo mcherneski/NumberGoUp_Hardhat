@@ -23,9 +23,6 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
     /// @notice Mapping of user address to their staked ERC20 balance
     mapping(address => uint256) private _stakedBalance;
 
-    /// @notice Maximum number of tokens that can be staked/unstaked in a single transaction
-    uint256 public constant MAX_BATCH_SIZE = 46;
-
     /// @notice Bit masks for packed data
     uint256 private constant _BITMASK_ADDRESS = (1 << 160) - 1;
     uint256 private constant _BITMASK_INDEX = ((1 << 96) - 1) << 160;
@@ -77,8 +74,8 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
     function stake(uint256[] calldata ids_) external nonReentrant returns (bool) {
         uint256 length = ids_.length;
         if (length == 0) revert EmptyStakingArray();
-        if (length > MAX_BATCH_SIZE) revert BatchSizeExceeded();
         if (nguToken.erc721TransferExempt(msg.sender)) revert InvalidStakingExemption();
+        if (nguToken.erc721TransferExempt(address(this))) revert InvalidStakingExemption();
 
         uint256 totalValue = nguToken.units() * length;
         uint256 balance = nguToken.balanceOf(msg.sender);
@@ -115,7 +112,6 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
     function unstake(uint256[] calldata ids_) external nonReentrant returns (bool) {
         uint256 length = ids_.length;
         if (length == 0) revert EmptyStakingArray();
-        if (length > MAX_BATCH_SIZE) revert BatchSizeExceeded();
 
         uint256 totalValue = nguToken.units() * length;
 
@@ -160,18 +156,32 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
         tokens.pop();
     }
 
+    function _extractTokenID(uint256 nftId_) internal pure returns (uint256) {
+        return nftId_ & ((1 << (256 - 4)) - 1);  // Get everything except top 4 bits
+    }
     /// @notice Get the staked ERC20 balance for an address
     /// @param owner_ The address to check
     /// @return The total amount of staked ERC20 tokens
-    function getStakedERC20Balance(address owner_) external view returns (uint256) {
+    function balanceOf(address owner_) external view returns (uint256) {
         return _stakedBalance[owner_];
     }
 
     /// @notice Get all staked tokens for an address
     /// @param owner_ The address to check
-    /// @return Array of token IDs staked by the owner
-    function getStakedERC721Tokens(address owner_) external view returns (uint256[] memory) {
-        return _stakedTokens[owner_];
+    /// @return fullTokenId Array of complete NFT IDs (including series)
+    /// @return formatId Array of formatted/display IDs
+    function getStakedERC721Tokens(address owner_) external view returns (uint256[] memory fullTokenId, uint256[] memory formatId) {
+        uint256 len = _stakedTokens[owner_].length;
+        fullTokenId = new uint256[](len);
+        formatId = new uint256[](len);
+
+        for (uint256 i; i < len; ) {
+            uint256 tokenId = _stakedTokens[owner_][i];
+            fullTokenId[i] = tokenId;
+            formatId[i] = _extractTokenID(tokenId);
+            unchecked { i++; }
+        }
+        return (fullTokenId, formatId);
     }
 
     /// @notice Get the total ERC20 balance of an address including staked tokens
@@ -184,7 +194,7 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
     /// @notice Get the NFT ID format for a given token ID
     /// @param tokenId_ The token ID to format
     /// @return The formatted NFT ID
-    function getNFTId(uint256 tokenId_) external pure returns (uint256) {
+    function getNFTId(uint256 tokenId_) external pure override returns (uint256) {
         return tokenId_;
     }
 

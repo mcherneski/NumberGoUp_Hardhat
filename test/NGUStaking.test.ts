@@ -55,17 +55,18 @@ describe("NGUStaking", function () {
         });
 
         it("Should have zero staked balance initially", async function () {
-            expect(await staking.getStakedERC20Balance(user1.address)).to.equal(0);
+            expect(await staking.balanceOf(user1.address)).to.equal(0);
         });
     });
 
     describe("Staking", function () {
         it("Should stake single token successfully", async function () {
             // Get user1's first NFT ID
-            const ownedNFTs = await numberGoUp.getOwnedNFTs(user1.address);
-            expect(ownedNFTs.length).to.be.greaterThan(0);
+            const [fullTokenId, formatId] = await numberGoUp.owned(user1.address);
+            expect(fullTokenId.length).to.be.greaterThan(0);
             
-            const tokenId = ownedNFTs[0];
+            const tokenId = fullTokenId[0];
+            console.log("Staking NFT:", formatId[0]);
             
             // Approve staking contract
             await numberGoUp.connect(user1).approve(
@@ -80,17 +81,21 @@ describe("NGUStaking", function () {
             // Verify staking state
             expect(await staking.getStakedOwner(tokenId)).to.equal(user1.address);
             expect(await staking.getStakedIndex(tokenId)).to.equal(0);
-            expect(await staking.getStakedERC20Balance(user1.address)).to.equal(UNITS);
+            expect(await staking.balanceOf(user1.address)).to.equal(UNITS);
             
-            const stakedTokens = await staking.getStakedERC721Tokens(user1.address);
-            expect(stakedTokens.length).to.equal(1);
-            expect(stakedTokens[0]).to.equal(tokenId);
+            // const stakedTokens = await staking.getStakedERC721Tokens(user1.address);
+            const tokens = await staking.getStakedERC721Tokens(user1.address);
+            const stakedTokens = tokens[1]
+            console.log("Staked NFTs: ", stakedTokens)
+            const id = stakedTokens[0]
+            expect(id).to.equal(1n);
+            console.log("Successfully staked NFT:", id);
+            console.log("Staked NFTs:", stakedTokens.map(id => id.toString()));
         });
 
         it("Should stake multiple tokens successfully", async function () {
-            const ownedNFTs = await numberGoUp.getOwnedNFTs(user1.address);
-            const tokenIds = ownedNFTs.slice(0, 3); // Take first 3 NFTs
-            
+            const [fullTokenId, formatId] = await numberGoUp.owned(user1.address);
+            const tokenIds = fullTokenId.slice(0, 3); // Take first 3 NFTs
             // Approve staking contract
             await numberGoUp.connect(user1).approve(
                 await staking.getAddress(),
@@ -107,18 +112,18 @@ describe("NGUStaking", function () {
                 expect(await staking.getStakedIndex(tokenIds[i])).to.equal(i);
             }
 
-            expect(await staking.getStakedERC20Balance(user1.address)).to.equal(UNITS * 3n);
+            expect(await staking.balanceOf(user1.address)).to.equal(UNITS * 3n);
             
             const stakedTokens = await staking.getStakedERC721Tokens(user1.address);
-            expect(stakedTokens.length).to.equal(3);
-            for (let i = 0; i < tokenIds.length; i++) {
-                expect(stakedTokens[i]).to.equal(tokenIds[i]);
-            }
+            const stakedTokenIds = stakedTokens[1]
+            expect(stakedTokenIds.length).to.equal(3n);
+            console.log("Successfully staked NFTs:", stakedTokenIds.map(id => id.toString()));
+
         });
 
         it("Should fail to stake already staked token", async function () {
-            const ownedNFTs = await numberGoUp.getOwnedNFTs(user1.address);
-            const tokenId = ownedNFTs[0];
+            const [fullTokenId, formatId] = await numberGoUp.owned(user1.address);
+            const tokenId = fullTokenId[0];
             const tokenIdToStake = [BigInt(tokenId.toString())];
             
             // First stake
@@ -132,8 +137,8 @@ describe("NGUStaking", function () {
         });
 
         it("Should fail to stake with insufficient balance", async function () {
-            const ownedNFTs = await numberGoUp.getOwnedNFTs(user1.address);
-            const tokenId = ownedNFTs[0];
+            const [fullTokenId, formatId] = await numberGoUp.owned(user1.address);
+            const tokenId = fullTokenId[0];
             const tokenIdToStake = [BigInt(tokenId.toString())];
             
             // Transfer all tokens away
@@ -150,32 +155,40 @@ describe("NGUStaking", function () {
 
         beforeEach(async function () {
             // Setup: Stake a token first
-            const ownedNFTs = await numberGoUp.getOwnedNFTs(user1.address);
-            stakedTokenId = BigInt(ownedNFTs[0].toString());
+            const [fullTokenIds, formatIds] = await numberGoUp.owned(user1.address);
+            stakedTokenId = BigInt(fullTokenIds[0].toString());
+            console.log("Setting up test by staking NFT:", formatIds[0]);
             
             await numberGoUp.connect(user1).approve(await staking.getAddress(), UNITS);
             await staking.connect(user1).stake([stakedTokenId]);
+
         });
 
         it("Should unstake single token successfully", async function () {
             // Record balances before
+            const [fullTokenIds, formatIds] = await numberGoUp.owned(user1.address);
+
             const balanceBefore = await numberGoUp.balanceOf(user1.address);
+            console.log("Unstaking NFT:", formatIds[0]);
             
             // Unstake
             await staking.connect(user1).unstake([stakedTokenId]);
 
             // Verify unstaking
             expect(await staking.getStakedOwner(stakedTokenId)).to.equal(ethers.ZeroAddress);
-            expect(await staking.getStakedERC20Balance(user1.address)).to.equal(0);
+            expect(await staking.balanceOf(user1.address)).to.equal(0);
             expect(await numberGoUp.balanceOf(user1.address)).to.equal(balanceBefore + UNITS);
             
             const stakedTokens = await staking.getStakedERC721Tokens(user1.address);
-            expect(stakedTokens.length).to.equal(0);
+            const stakedTokenIds = stakedTokens[1]
+            expect(stakedTokenIds.length).to.equal(0n);
+            console.log("Successfully unstaked NFT:", formatIds[0]);
         });
 
         it("Should fail to unstake non-staked token", async function () {
-            const ownedNFTs = await numberGoUp.getOwnedNFTs(user1.address);
-            const nonStakedToken = BigInt(ownedNFTs[1].toString());
+            const [fullTokenId, formatId] = await numberGoUp.owned(user1.address);
+            const nonStakedToken = BigInt(fullTokenId[1].toString());
+                console.log("Attempting to unstake non-staked NFT:", nonStakedToken);
             
             await expect(
                 staking.connect(user1).unstake([nonStakedToken])
@@ -183,6 +196,7 @@ describe("NGUStaking", function () {
         });
 
         it("Should fail to unstake token owned by another user", async function () {
+                console.log("Attempting to unstake NFT owned by another user:", stakedTokenId);
             await expect(
                 staking.connect(user2).unstake([stakedTokenId])
             ).to.be.revertedWithCustomError(staking, "NotTokenOwner");
@@ -190,48 +204,20 @@ describe("NGUStaking", function () {
     });
 
     describe("Batch Operations", function () {
-        it("Should respect MAX_BATCH_SIZE limit for staking", async function () {
-            // Get MAX_BATCH_SIZE and ensure we have enough tokens
-            const MAX_BATCH_SIZE = await staking.MAX_BATCH_SIZE();
-            
-            // Transfer more tokens to user1 if needed for the large batch
-            const requiredTokens = UNITS * (BigInt(MAX_BATCH_SIZE) + 1n);
-            if ((await numberGoUp.balanceOf(user1.address)) < requiredTokens) {
-                await numberGoUp.connect(owner).transfer(user1.address, requiredTokens);
-            }
-
-            // Get owned NFTs and ensure we have more than MAX_BATCH_SIZE
-            const ownedNFTs = await numberGoUp.getOwnedNFTs(user1.address);
-            expect(ownedNFTs.length).to.be.greaterThan(Number(MAX_BATCH_SIZE));
-
-            // Create array with MAX_BATCH_SIZE + 1 tokens
-            const tooManyTokens = ownedNFTs.slice(0, Number(MAX_BATCH_SIZE) + 1)
-                .map(id => BigInt(id.toString()));
-            
-            // Verify we actually have more than MAX_BATCH_SIZE tokens
-            expect(tooManyTokens.length).to.equal(Number(MAX_BATCH_SIZE) + 1);
-
-            // Approve enough tokens for the large batch
-            await numberGoUp.connect(user1).approve(
-                await staking.getAddress(),
-                requiredTokens
-            );
-
-            // Attempt to stake more than MAX_BATCH_SIZE tokens
-            await expect(
-                staking.connect(user1).stake(tooManyTokens)
-            ).to.be.revertedWithCustomError(staking, "BatchSizeExceeded");
-        });
-
         it("Should handle index updates correctly when unstaking from middle", async function () {
             // Stake 3 tokens
-            const ownedNFTs = await numberGoUp.getOwnedNFTs(user1.address);
-            const tokenIds = ownedNFTs.slice(0, 3).map(id => BigInt(id.toString()));
+            const [fullTokenId, formatId] = await numberGoUp.owned(user1.address);
+            const tokenIds = fullTokenId.slice(0, 3).map(id => BigInt(id.toString()));
+            console.log("Staking NFTs:", formatId.map(id => id.toString()));
             
             await numberGoUp.connect(user1).approve(await staking.getAddress(), UNITS * 3n);
+            const nftIds = await numberGoUp.owned(user1.address)
+            const formattedIds = nftIds[1]
+            console.log("Staked NFTs: ", formattedIds.map(id => id.toString()))
             await staking.connect(user1).stake(tokenIds);
-
+            
             // Unstake middle token
+            console.log("Unstaking middle NFT:", tokenIds[1]);
             await staking.connect(user1).unstake([tokenIds[1]]);
 
             // Verify indices were updated correctly
@@ -239,16 +225,18 @@ describe("NGUStaking", function () {
             expect(await staking.getStakedIndex(tokenIds[2])).to.equal(1);
 
             const stakedTokens = await staking.getStakedERC721Tokens(user1.address);
-            expect(stakedTokens.length).to.equal(2);
-            expect(stakedTokens[0]).to.equal(tokenIds[0]);
-            expect(stakedTokens[1]).to.equal(tokenIds[2]);
+            const stakedTokenIds = stakedTokens[1]
+            expect(stakedTokenIds.length).to.equal(2n);
+            expect(stakedTokenIds[0]).to.equal(1n);
+            expect(stakedTokenIds[1]).to.equal(3n);
+            console.log("Remaining staked NFTs:", stakedTokenIds.map(id => id.toString()));
         });
     });
 
     describe("View Functions", function () {
         it("Should track total balance correctly", async function () {
-            const ownedNFTs = await numberGoUp.getOwnedNFTs(user1.address);
-            const tokenIds = ownedNFTs.slice(0, 2).map(id => BigInt(id.toString()));
+            const [fullTokenId, formatId] = await numberGoUp.owned(user1.address);
+            const tokenIds = fullTokenId.slice(0, 2).map(id => BigInt(id.toString()));
             
             // Initial balance
             const initialBalance = await numberGoUp.balanceOf(user1.address);

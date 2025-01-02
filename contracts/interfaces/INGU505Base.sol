@@ -38,6 +38,11 @@ interface INGU505Base is IERC165 {
     /// @param value True if the address is exempt, false if not
     event ERC721TransferExemptSet(address indexed account, bool value);
 
+    /// @notice Emitted when the NFT series is changed
+    /// @param oldSeries The old series
+    /// @param newSeries The new series
+    event NFTSeriesChanged(uint256 indexed oldSeries, uint256 indexed newSeries);
+
     // Errors
     /// @notice Token ID not found
     error NotFound();
@@ -125,6 +130,11 @@ interface INGU505Base is IERC165 {
     /// @return success True if the approval succeeded
     function approve(address spender, uint256 value) external returns (bool);
 
+    /// @notice Sets the staking contract
+    /// @param stakingContract_ The address of the staking contract
+    /// @return True if the staking contract was set successfully
+    function setStakingContract(address stakingContract_) external returns (bool);
+
     /// @notice Returns the amount of tokens approved for a spender
     /// @param owner The token owner
     /// @param spender The spender address
@@ -150,6 +160,12 @@ interface INGU505Base is IERC165 {
     /// @param id The token ID
     /// @return The metadata URI
     function tokenURI(uint256 id) external view returns (string memory);
+
+    /// @notice Returns the number of NFTs owned by an address
+    /// @param owner The address to query
+    /// @return fullTokenId The full token IDs owned by the address
+    /// @return formatId The formatted token IDs owned by the address
+    function owned(address owner) external view returns (uint256[] memory fullTokenId, uint256[] memory formatId);
 
     /// @notice Returns the number of NFTs owned by an address
     /// @param owner The address to query

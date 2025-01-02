@@ -21,9 +21,6 @@ interface INGU505Staking is IERC165 {
     // Errors
     /// @notice Thrown when attempting to stake/unstake an empty array of tokens
     error EmptyStakingArray();
-
-    /// @notice Thrown when attempting to stake/unstake more than the maximum batch size
-    error BatchSizeExceeded();
     
     /// @notice Thrown when an exempt address attempts to stake
     error InvalidStakingExemption();
@@ -53,12 +50,13 @@ interface INGU505Staking is IERC165 {
     /// @notice Get the staked ERC20 balance for an address
     /// @param owner_ The address to check
     /// @return The total amount of staked ERC20 tokens
-    function getStakedERC20Balance(address owner_) external view returns (uint256);
+    function balanceOf(address owner_) external view returns (uint256);
 
     /// @notice Get all staked tokens for an address
     /// @param owner_ The address to check
-    /// @return Array of token IDs staked by the owner
-    function getStakedERC721Tokens(address owner_) external view returns (uint256[] memory);
+    /// @return fullTokenId Array of complete NFT IDs (including series)
+    /// @return formatId Array of formatted/display IDs
+    function getStakedERC721Tokens(address owner_) external view returns (uint256[] memory fullTokenId, uint256[] memory formatId);
 
     /// @notice Get the total ERC20 balance of an address including staked tokens
     /// @param owner_ The address to check
@@ -70,7 +68,7 @@ interface INGU505Staking is IERC165 {
     /// @return The formatted NFT ID
     /// @dev Combines the current series with the token ID
     function getNFTId(uint256 tokenId_) external view returns (uint256);
-
+    
     // State-Changing Functions
     /// @notice Stake NFTs
     /// @param ids_ Array of token IDs to stake
