@@ -7,13 +7,7 @@ import {IERC165} from "@openzeppelin/contracts/interfaces/IERC165.sol";
 /// @notice Interface for the NGU505 base functionality
 /// @dev Combines ERC20 and ERC721 functionality with additional features  
 interface INGU505Base is IERC165 {
-    // Events
-    /// @notice Emitted when ERC20 tokens are transferred
-    /// @param from The sender address
-    /// @param to The recipient address
-    /// @param value The amount of tokens transferred
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    
+    // Events    
     /// @notice Emitted when approval is granted for token spending
     /// @param owner The token owner
     /// @param spender The approved spender
@@ -43,9 +37,13 @@ interface INGU505Base is IERC165 {
     /// @param newSeries The new series
     event NFTSeriesChanged(uint256 indexed oldSeries, uint256 indexed newSeries);
 
+    /// @notice Emitted when an operator is approved/disapproved for all tokens
+    /// @param owner The token owner
+    /// @param operator The operator address
+    /// @param approved True if approved, false if disapproved
+    event ApprovalForAll(address indexed owner, address indexed operator, bool approved);
+
     // Errors
-    /// @notice Token ID not found
-    error NotFound();
     /// @notice Sender has insufficient balance for transfer
     /// @param required Amount required
     /// @param available Amount available
@@ -97,16 +95,18 @@ interface INGU505Base is IERC165 {
     /// @param failedIds List of token IDs that failed
     /// @param reason Reason for failure
     error BatchOperationFailed(uint256[] failedIds, string reason);
-    /// @notice Queue is empty
-    error QueueEmpty();
-    /// @notice Queue is full
-    error QueueFull();
     /// @notice Token not found in queue
     error TokenNotFound();
     /// @notice Unauthorized operation
     error Unauthorized();
+    /// @notice Invalid operator
     error InvalidOperator();
+    /// @notice Unsafe recipient
     error UnsafeRecipient();
+    /// @notice Maximum NFTs reached
+    error MaxNFTsReached(string message);
+    /// @notice Invalid staking contract
+    error InvalidStakingContract();
 
     // Core ERC20 functions
     /// @notice Transfers tokens from sender to recipient
@@ -115,6 +115,10 @@ interface INGU505Base is IERC165 {
     /// @return success True if the transfer succeeded
     /// @dev Will automatically handle NFT transfers based on whole token amounts
     function transfer(address to, uint256 value) external returns (bool);
+
+    /// @notice Returns the current token ID
+    /// @return The current token ID
+    function currentTokenId() external view returns (uint256);
 
     /// @notice Transfers tokens from one address to another
     /// @param from The sender address
@@ -163,9 +167,14 @@ interface INGU505Base is IERC165 {
 
     /// @notice Returns the number of NFTs owned by an address
     /// @param owner The address to query
-    /// @return fullTokenId The full token IDs owned by the address
-    /// @return formatId The formatted token IDs owned by the address
-    function owned(address owner) external view returns (uint256[] memory fullTokenId, uint256[] memory formatId);
+    /// @return tokenIds The formatted token IDs owned by the address
+    function owned(address owner) external view returns (uint256[] memory tokenIds);
+
+    /// @notice Returns the full and formatted token IDs owned by an address
+    /// @param owner The address to query
+    /// @return fullTokenId The full token IDs
+    /// @return formattedTokenId The formatted token IDs    
+    function getOwnedERC721Data(address owner) external view returns (uint256[] memory fullTokenId, uint256[] memory formattedTokenId);
 
     /// @notice Returns the number of NFTs owned by an address
     /// @param owner The address to query
@@ -262,4 +271,34 @@ interface INGU505Base is IERC165 {
     /// @notice Returns the maximum total supply of ERC20 tokens
     /// @return The maximum supply
     function maxTotalSupplyERC20() external view returns (uint256);
+
+    /// @notice Returns the staking contract address
+    /// @return The address of the staking contract
+    function stakingContract() external view returns (address);
+
+    /// @notice Returns the role identifier for exemption managers
+    /// @return The keccak256 hash of "EXEMPTION_MANAGER_ROLE"
+    function EXEMPTION_MANAGER_ROLE() external view returns (bytes32);
+
+    /// @notice Transfers ERC20 tokens from one address to another
+    /// @param from_ The sender address
+    /// @param to_ The recipient address
+    /// @param value_ The amount to transfer
+    /// @return success True if the transfer succeeded
+    function erc20TransferFrom(address from_, address to_, uint256 value_) external returns (bool);
+
+    /// @notice Gets the index of a token in its owner's queue
+    /// @param tokenId_ The token ID to query
+    /// @return index_ The index in the owner's queue
+    function getOwnedIndex(uint256 tokenId_) external view returns (uint256 index_);
+
+    /// @notice Returns number of NFTs still pending to be minted for an address
+    /// @param account_ The address to query
+    /// @return The number of NFTs pending to be minted
+    function pendingNFTs(address account_) external view returns (uint256);
+
+    /// @notice Allows minting of remaining NFTs in batches
+    /// @dev Can be called multiple times until all NFTs are minted
+    function mintPendingNFTs() external;
+
 } 

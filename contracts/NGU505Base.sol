@@ -9,6 +9,7 @@ import {IERC721Receiver} from "@openzeppelin/contracts/interfaces/IERC721Receive
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {DoubleEndedQueue} from "./lib/DoubleEndedQueue.sol";
+import {INGU505Staking} from "./interfaces/INGU505Staking.sol";
 
 abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     using DoubleEndedQueue for DoubleEndedQueue.Uint256Deque;
@@ -46,7 +47,10 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     // NFT ID tracking
     uint256 private constant ID_OFFSET = 252; // Reserve top 4 bits for series
     uint256 internal _currentSeries = 1; // Start at series 1 (0001) to differentiate from regular amounts
-    uint256 private _currentPrefix = 1;  // Start at 1 since we never use ID 0
+    uint256 private _currentTokenId = 1;  // Start at 1 since we never use ID 0
+
+    // Add state variable for pending NFTs
+    mapping(address => uint256) private _pendingNFTs;
 
     constructor(
         string memory name_,
@@ -88,8 +92,37 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
 
     function ownerOf(uint256 tokenId) public view virtual override returns (address) {
         address owner = _getOwnerOf(tokenId);
-        if (owner == address(0)) revert NotFound();
+        if (owner == address(0)) revert TokenNotFound();
         return owner;
+    }
+
+    function owned(address owner) public view returns (uint256[] memory formattedTokenId) {
+        uint256 len = _owned[owner].length();
+        formattedTokenId = new uint256[](len);
+        
+        for (uint256 i = 0; i < len;) {
+            uint256 nftId = _owned[owner].at(i);
+            formattedTokenId[i] = _extractTokenID(nftId);
+            unchecked { i++; }
+        }
+        return formattedTokenId;
+    }
+
+    function getOwnedERC721Data(address owner) public view returns (uint256[] memory fullTokenId, uint256[] memory formattedTokenId) {
+        uint256 len = _owned[owner].length();
+        fullTokenId = new uint256[](len);
+        formattedTokenId = new uint256[](len);
+
+        for (uint256 i = 0; i < len;) {
+            fullTokenId[i] = _owned[owner].at(i);
+            formattedTokenId[i] = _extractTokenID(fullTokenId[i]);
+            unchecked { i++; }
+        }
+        return (fullTokenId, formattedTokenId);
+    }
+
+    function currentTokenId() public view virtual override returns (uint256) {
+        return _currentTokenId;
     }
 
     function erc20BalanceOf(address owner) public view virtual override returns (uint256) {
@@ -103,9 +136,18 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     function maxTotalSupplyERC20() public view virtual override returns (uint256) {
         return _maxTotalSupplyERC20;
     }
+
     // ============ Set Staking Function ============
     function setStakingContract(address stakingContract_) public virtual override onlyRole(DEFAULT_ADMIN_ROLE) returns (bool) {
         if (stakingContract_ == address(0)) revert UnsafeRecipient();
+        
+        // Check if the contract implements INGU505Staking interface
+        try IERC165(stakingContract_).supportsInterface(type(INGU505Staking).interfaceId) returns (bool supported) {
+            if (!supported) revert InvalidStakingContract();
+        } catch {
+            revert InvalidStakingContract();
+        }
+
         stakingContract = stakingContract_;
         return true;
     }
@@ -198,17 +240,20 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
             revert Unauthorized();
         }
 
-        if (msg.sender != from_) {
-            if (msg.sender != getApproved[tokenId_] || to_ != stakingContract) {
-                revert Unauthorized();
-            }
+        bool isAuthorized = 
+            msg.sender == from_ ||
+            msg.sender == stakingContract ||
+            msg.sender == getApproved[tokenId_];
+
+        if (!isAuthorized) {
+            revert Unauthorized();
         }
 
         _transferERC20(from_, to_, units);
         _transferERC721(from_, to_, tokenId_);
     }
 
-    // only works for erc20 approvals
+    ///@notice Function for ERC-20 Approvals
     function approve(
         address spender_,
         uint256 value_
@@ -237,12 +282,10 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
             revert MaxSupplyExceeded(totalSupply + value_, _maxTotalSupplyERC20);
         }
 
-        // Update total supply and balances
         totalSupply += value_;
         balanceOf[to_] += value_;
         emit ERC20Events.Transfer(address(0), to_, value_);
 
-        // If recipient is not exempt, mint NFTs
         if (!erc721TransferExempt(to_)) {
             uint256 tokensToMint = value_ / units;
             for (uint256 i = 0; i < tokensToMint;) {
@@ -254,9 +297,8 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
 
     function _mintERC721(address to_) internal virtual returns (uint256) {
         unchecked {
-            // If we've reached max ID in current series (10 billion per series)
-            if (_currentPrefix >= 10_000_000_000) {
-                _currentPrefix = 1;  // Reset ID to 1
+            if (_currentTokenId >= 10_000_000_000) {
+                _currentTokenId = 1;  // Reset ID to 1
                 
                 // Handle series increment in hex order (1-9, then A-F)
                 if (_currentSeries == 0xF) revert MaxNFTsReached(unicode"¯\\_(ツ)_/¯");  // All series exhausted
@@ -269,11 +311,9 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
                 }
             }
             
-            // Create NFT ID: combine series prefix with current ID
-            uint256 nftId = (_currentSeries << (256 - 4)) | _currentPrefix;
-            _currentPrefix++;
+            uint256 nftId = (_currentSeries << (256 - 4)) | _currentTokenId;
+            _currentTokenId++;
             emit NFTSeriesChanged(_currentSeries - 1, _currentSeries);
-            // Set up ownership
             _addToOwned(to_, nftId);
 
             emit ERC721Events.Mint(to_, nftId);
@@ -281,16 +321,20 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         }
     }
 
+    /// @notice Sets the ERC721 transfer exemption status for an account.
+    /// @notice Will revert if the account has more than 701 ERC20 tokens, since 701 is our max minting limit.
     function _setERC721TransferExempt(address account_, bool value_) internal virtual onlyRole(EXEMPTION_MANAGER_ROLE) {
         if (account_ == address(0)) revert InvalidExemption();
 
         if (_erc721TransferExempt[account_] != value_) {
+            if (value_) {
                 _clearERC721Balance(account_);
             } else {
                 _reinstateERC721Balance(account_);
             }
-        _erc721TransferExempt[account_] = value_;
-        emit ERC721TransferExemptSet(account_, value_);
+            _erc721TransferExempt[account_] = value_;
+            emit ERC721TransferExemptSet(account_, value_);
+        }
     }
 
     // ============ Internal Transfer Functions ============
@@ -299,19 +343,12 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         address to_,
         uint256 value_
     ) internal virtual {
-        // Minting is a special case for which we should not check the balance of
-        // the sender, and we should increase the total supply.
         if (from_ == address(0)) {
             totalSupply += value_;
         } else {
-            // Check balance before deducting
             if (balanceOf[from_] < value_) revert SenderInsufficientBalance(value_, balanceOf[from_]);
-            // Deduct value from sender's balance.
             balanceOf[from_] = balanceOf[from_] - value_;
         }
-
-        // Update the recipient's balance.
-        // Can be unchecked because on mint, adding to totalSupply is checked, and on transfer balance deduction is checked.
         balanceOf[to_] = balanceOf[to_] + value_;
 
         emit ERC20Events.Transfer(from_, to_, value_);
@@ -319,18 +356,13 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
 
     function _withdrawAndBurnERC721(address from_) internal virtual {
         uint256 tokenId = _owned[from_].popFront();
-        // Clean up ownership data
         delete _ownedData[tokenId];
 
         emit ERC721Events.Burn(from_, tokenId);
     }
 
     /// @dev Transfer an NFT from one address to another. Handles the removal from the senders queue and addition to receipient's.
-    function _transferERC721(
-        address from_,
-        address to_,
-        uint256 tokenId_
-    ) internal virtual {
+    function _transferERC721(address from_, address to_, uint256 tokenId_) internal virtual {
         if (from_ != address(0)) {
             delete getApproved[tokenId_];
             if (_owned[from_].front() != tokenId_) {
@@ -339,7 +371,11 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
                 _owned[from_].popFront();
             }
         }
-        _addToOwned(to_, tokenId_);
+        if (from_ == stakingContract) {
+            _addToOwnedFront(to_, tokenId_);
+        } else {
+            _addToOwned(to_, tokenId_);
+        }
         emit ERC721Events.Transfer(from_, to_, tokenId_);
     }
 
@@ -347,6 +383,13 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     function _addToOwned(address to_, uint256 tokenId_) internal {
         uint256 position = _owned[to_].length();
         _owned[to_].pushBack(tokenId_);
+        _setOwnerOf(tokenId_, to_);
+        _setOwnedIndex(tokenId_, position);
+    }
+
+    function _addToOwnedFront(address to_, uint256 tokenId_) internal {
+        uint256 position = _owned[to_].length();
+        _owned[to_].pushFront(tokenId_);
         _setOwnerOf(tokenId_, to_);
         _setOwnedIndex(tokenId_, position);
     }
@@ -427,43 +470,71 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
             return true;
         }
 
+        uint256 MINT_BATCH_SIZE = 700;
+        uint256 BURN_BATCH_SIZE = 10000;
+
         // Case 2: Sender exempt, receiver not exempt - mint NFTs to receiver if needed
         if (isFromExempt && !isToExempt) {
-            uint256 tokensToMint = (balanceOf[to_] / units) - (toBalanceBefore / units);
-            for (uint256 i = 0; i < tokensToMint;) {
+            
+            uint256 expectedTotal = balanceOf[to_] / units;
+            uint256 currentNFTs = erc721BalanceOf(to_);
+            uint256 tokensToMint = expectedTotal - currentNFTs;
+            uint256 batch = tokensToMint > MINT_BATCH_SIZE ? MINT_BATCH_SIZE : tokensToMint;
+            
+            // Mint first batch
+            for (uint256 i = 0; i < batch;) {
                 _mintERC721(to_);
                 unchecked { i++; }
             }
+
+            // Update pending NFTs
+            _updatePendingNFTs(to_);
             return true;
         }
 
         // Case 3: Sender not exempt, receiver exempt - burn sender's NFTs if needed
         if (!isFromExempt && isToExempt) {
-            uint256 tokensToWithdraw = (fromBalanceBefore / units) - (balanceOf[from_] / units);
-            for (uint256 i = 0; i < tokensToWithdraw;) {
+            uint256 expectedTotal = balanceOf[from_] / units;
+            uint256 currentNFTs = erc721BalanceOf(from_);
+            uint256 tokensToBurn = currentNFTs - expectedTotal;
+            uint256 batch = tokensToBurn > BURN_BATCH_SIZE ? BURN_BATCH_SIZE : tokensToBurn;
+            
+            // Burn first batch
+            for (uint256 i = 0; i < batch;) {
                 _withdrawAndBurnERC721(from_);
                 unchecked { i++; }
             }
+
+            // Update pending NFTs
+            _updatePendingNFTs(from_);
             return true;
         }
 
         // Case 4: Neither exempt - handle both whole token transfers and fractional changes
-        // First handle whole token transfers using FIFO order
         uint256 wholeTokensTransferred = value_ / units;
-        for (uint256 i = 0; i < wholeTokensTransferred;) {
+        
+        // Handle first batch of transfers
+        uint256 firstBatch = wholeTokensTransferred > MINT_BATCH_SIZE ? MINT_BATCH_SIZE : wholeTokensTransferred;
+        
+        // Process first batch of transfers
+        for (uint256 i = 0; i < firstBatch;) {
             uint256 tokenId = _owned[from_].front();
             _transferERC721(from_, to_, tokenId);
             unchecked { i++; }
         }
 
-        // Check if sender loses an additional whole token due to fractional transfer
+        // Update pending NFTs for both parties
+        _updatePendingNFTs(from_);
+        _updatePendingNFTs(to_);
+
+        // Handle fractional changes
         if ((fromBalanceBefore / units) - (balanceOf[from_] / units) > wholeTokensTransferred) {
             _withdrawAndBurnERC721(from_);
+            _updatePendingNFTs(from_);
         }
-
-        // Check if receiver gains an additional whole token due to fractional transfer
         if ((balanceOf[to_] / units) - (toBalanceBefore / units) > wholeTokensTransferred) {
             _mintERC721(to_);
+            _updatePendingNFTs(to_);
         }
 
         return true;
@@ -537,6 +608,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
                interfaceId == type(IERC165).interfaceId;
     }
 
+    // ============ Exemption Management ============
     /// @dev Sets ERC721 transfer exemption status using AccessControl
     /// @dev Only callable by addresses with EXEMPTION_MANAGER_ROLE
     /// @dev Updates internal _erc721TransferExempt mapping
@@ -565,7 +637,74 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         return hasRole(EXEMPTION_MANAGER_ROLE, account_);
     }
 
-    // Helper functions for NFT ID management
+    /// @notice Function to reinstate NFT balance when removing exemption
+    function _reinstateERC721Balance(address target_) internal virtual {
+        uint256 expectedERC721Balance = balanceOf[target_] / units;
+        uint256 actualERC721Balance = erc721BalanceOf(target_);
+        uint256 toMint = expectedERC721Balance - actualERC721Balance;
+
+        // Process first batch of 700 immediately
+        uint256 BATCH_SIZE = 700;
+        uint256 firstBatch = toMint > BATCH_SIZE ? BATCH_SIZE : toMint;
+        
+        // Mint first batch
+        for (uint256 i = 0; i < firstBatch;) {
+            _mintERC721(target_);
+            unchecked { i++; }
+        }
+
+        // Store remaining NFTs as pending if any
+        if (toMint > firstBatch) {
+            _pendingNFTs[target_] = toMint - firstBatch;
+        }
+    }
+
+    /// @notice Returns number of NFTs still pending to be minted for an address
+    function pendingNFTs(address account_) public view returns (uint256) {
+        return _pendingNFTs[account_];
+    }
+
+    /// @notice Allows minting of remaining NFTs in batches
+    /// @dev Can be called multiple times until all NFTs are minted
+    function mintPendingNFTs() external {
+        uint256 pending = _pendingNFTs[msg.sender];
+        if (pending == 0) revert InvalidOperation("No pending NFTs");
+
+        uint256 BATCH_SIZE = 700;
+        uint256 toBeMinted = pending > BATCH_SIZE ? BATCH_SIZE : pending;
+        
+        // Mint the batch
+        for (uint256 i = 0; i < toBeMinted;) {
+            _mintERC721(msg.sender);
+            unchecked { i++; }
+        }
+
+        // Update pending count
+        _pendingNFTs[msg.sender] = pending - toBeMinted;
+    }
+
+    /// @notice Function to clear NFT balance when adding exemption
+    function _clearERC721Balance(address target_) internal virtual {
+        uint256 erc721Balance = erc721BalanceOf(target_);
+        uint256 BATCH_SIZE = 5000; // Can use larger batches for burns since they're cheaper
+
+        // Process full batches
+        while (erc721Balance >= BATCH_SIZE) {
+            for (uint256 i = 0; i < BATCH_SIZE;) {
+                _withdrawAndBurnERC721(target_);
+                unchecked { i++; }
+            }
+            erc721Balance -= BATCH_SIZE;
+        }
+
+        // Process remaining NFTs
+        for (uint256 i = 0; i < erc721Balance;) {
+            _withdrawAndBurnERC721(target_);
+            unchecked { i++; }
+        }
+    }
+
+    // ============ Helper Functions ============
     function _isNFTID(uint256 value_) internal pure returns (bool) {
         // An NFT ID must have:
         // 1. A series value in the top 4 bits (1-9 or A-F)
@@ -580,53 +719,24 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
                idPart > 0 && 
                idPart <= 10_000_000_000;  // Max 10 billion IDs per series
     }
-    // Maybe don't need this. 
-    // function _extractSeries(uint256 nftId_) internal pure returns (uint256) {
-    //     return nftId_ >> (256 - 4);  // Get top 4 bits
-    // }
 
     function _extractTokenID(uint256 nftId_) internal pure returns (uint256) {
         return nftId_ & ((1 << (256 - 4)) - 1);  // Get everything except top 4 bits
     }
 
-    // Error for when all NFT series are exhausted
-    error MaxNFTsReached(string message);
-
-    /// @notice Function to reinstate NFT balance when removing exemption
-    function _reinstateERC721Balance(address target_) internal {
-        uint256 expectedERC721Balance = balanceOf[target_] / units;
-        uint256 actualERC721Balance = erc721BalanceOf(target_);
-
-        // Mint any missing NFTs to match ERC20 balance
-        for (uint256 i = 0; i < expectedERC721Balance - actualERC721Balance; i++) {
-            _mintERC721(target_);
-        }
-    }
-
-    /// @notice Function to clear NFT balance when adding exemption
-    function _clearERC721Balance(address target_) internal {
-        uint256 erc721Balance = erc721BalanceOf(target_);
-
-        // Burn all NFTs when becoming exempt
-        for (uint256 i = 0; i < erc721Balance; i++) {
-            _withdrawAndBurnERC721(target_);
-        }
-    }
-
-    /// @notice Get formatted NFT ID information for an address
-    /// @param owner The address to check
-    /// @return fullTokenId Array of complete NFT IDs (including series)
-    /// @return formatId Array of formatted/display IDs
-    function owned(address owner) public view returns (uint256[] memory fullTokenId, uint256[] memory formatId) {
-        uint256 len = _owned[owner].length();
-        fullTokenId = new uint256[](len);
-        formatId = new uint256[](len);
+    // Add helper function to safely update pending NFTs
+    function _updatePendingNFTs(address user_) internal {
+        uint256 expectedTotal = balanceOf[user_] / units;
+        uint256 currentNFTs = erc721BalanceOf(user_);
         
-        for (uint256 i = 0; i < len; i++) {
-            uint256 nftId = _owned[owner].at(i);
-            fullTokenId[i] = nftId;
-            formatId[i] = _extractTokenID(nftId);
+        // If user has more NFTs than they should (shouldn't happen, but safe check)
+        if (currentNFTs > expectedTotal) {
+            _pendingNFTs[user_] = 0;
+            return;
         }
-        return (fullTokenId, formatId);
+
+        // Set pending to the exact difference needed
+        _pendingNFTs[user_] = expectedTotal - currentNFTs;
     }
+
 } 

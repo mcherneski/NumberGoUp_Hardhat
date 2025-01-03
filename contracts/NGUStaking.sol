@@ -24,27 +24,20 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
     mapping(address => uint256) private _stakedBalance;
 
     /// @notice Bit masks for packed data
-    uint256 private constant _BITMASK_ADDRESS = (1 << 160) - 1;
+    uint256 private constant _BITMASK_OWNER = (1 << 160) - 1;
     uint256 private constant _BITMASK_INDEX = ((1 << 96) - 1) << 160;
 
-    /// @notice Constructor
-    /// @param nguToken_ Address of the NumberGoUp token contract
-    /// @param initialOwner_ Address of the initial contract owner
     constructor(address nguToken_, address initialOwner_) Ownable(initialOwner_) {
         nguToken = NumberGoUp(nguToken_);
     }
 
-    /// @notice Get the staked owner of a token ID
-    /// @param tokenId_ The token ID to check
     function getStakedOwner(uint256 tokenId_) public view returns (address owner_) {
         uint256 data = _stakedData[tokenId_];
         assembly {
-            owner_ := and(data, _BITMASK_ADDRESS)
+            owner_ := and(data, _BITMASK_OWNER)
         }
     }
 
-    /// @notice Get the index of a token in its owner's staked tokens array
-    /// @param tokenId_ The token ID to check
     function getStakedIndex(uint256 tokenId_) public view returns (uint256 index_) {
         uint256 data = _stakedData[tokenId_];
         assembly {
@@ -52,124 +45,95 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
         }
     }
 
-    /// @notice Set the staked owner and index for a token
-    /// @param tokenId_ The token ID to update
-    /// @param owner_ The owner address
-    /// @param index_ The index in the owner's array
     function _setStakedData(uint256 tokenId_, address owner_, uint256 index_) internal {
         if (index_ > type(uint96).max) revert IndexOverflow();
         uint256 data;
         assembly {
             data := add(
-                and(owner_, _BITMASK_ADDRESS),
+                and(owner_, _BITMASK_OWNER),
                 shl(160, index_)
             )
         }
         _stakedData[tokenId_] = data;
     }
 
-    /// @notice Stake NFTs into the contract
-    /// @param ids_ Array of token IDs to stake
-    /// @return success True if the staking operation succeeded
     function stake(uint256[] calldata ids_) external nonReentrant returns (bool) {
         uint256 length = ids_.length;
         if (length == 0) revert EmptyStakingArray();
         if (nguToken.erc721TransferExempt(msg.sender)) revert InvalidStakingExemption();
         if (nguToken.erc721TransferExempt(address(this))) revert InvalidStakingExemption();
-
+        
         uint256 totalValue = nguToken.units() * length;
         uint256 balance = nguToken.balanceOf(msg.sender);
         if (balance < totalValue) revert StakerInsufficientBalance(totalValue, balance);
 
-        // Process each token
+        uint256 successfulStakes = 0;
         for (uint256 i = 0; i < length;) {
             uint256 tokenId = ids_[i];
-            
-            // Verify ownership and not already staked
             if (getStakedOwner(tokenId) != address(0)) revert TokenAlreadyStaked(tokenId);
             if (nguToken.ownerOf(tokenId) != msg.sender) revert NotTokenOwner();
 
-            // Update staking records
+            nguToken.erc721TransferFrom(msg.sender, address(this), tokenId);
+
             uint256 newIndex = _stakedTokens[msg.sender].length;
             _stakedTokens[msg.sender].push(tokenId);
             _setStakedData(tokenId, msg.sender, newIndex);
+            unchecked { successfulStakes++; }
             unchecked { i++; }
+            emit Staked(msg.sender, tokenId);
         }
 
-        // Update staked balance
-        _stakedBalance[msg.sender] += totalValue;
-
-        // Transfer tokens to this contract
-        nguToken.transferFrom(msg.sender, address(this), totalValue);
-
-        emit Staked(msg.sender, ids_);
+        _stakedBalance[msg.sender] += successfulStakes * nguToken.units();
+        
         return true;
     }
 
-    /// @notice Unstake NFTs from the contract
-    /// @param ids_ Array of token IDs to unstake
-    /// @return success True if the unstaking operation succeeded
     function unstake(uint256[] calldata ids_) external nonReentrant returns (bool) {
         uint256 length = ids_.length;
         if (length == 0) revert EmptyStakingArray();
 
-        uint256 totalValue = nguToken.units() * length;
-
-        // Process each token
+        uint256 successfulUnstakes = 0;
         for (uint256 i = 0; i < length;) {
             uint256 tokenId = ids_[i];
             
-            // Verify ownership
-            if (getStakedOwner(tokenId) != msg.sender) revert NotTokenOwner();
+            address stakedOwner = getStakedOwner(tokenId);  
+            if (stakedOwner == address(0)) revert TokenNotStaked(tokenId);
+            if (stakedOwner != msg.sender) revert NotTokenOwner();
 
-            // Remove from staking records
             _removeStakedToken(msg.sender, tokenId);
             delete _stakedData[tokenId];
+            nguToken.erc721TransferFrom(address(this), msg.sender, tokenId);
+            emit Unstaked(msg.sender, tokenId);
+            unchecked { successfulUnstakes++; }
             unchecked { i++; }
         }
 
-        // Update staked balance
-        _stakedBalance[msg.sender] -= totalValue;
+        _stakedBalance[msg.sender] -= successfulUnstakes * nguToken.units();
 
-        // Transfer tokens back to user
-        nguToken.transfer(msg.sender, totalValue);
-
-        emit Unstaked(msg.sender, ids_);
         return true;
     }
 
-    /// @notice Remove a token from the staked tokens array
-    /// @param owner_ The owner of the token
-    /// @param tokenId_ The token ID to remove
     function _removeStakedToken(address owner_, uint256 tokenId_) internal {
         uint256[] storage tokens = _stakedTokens[owner_];
         uint256 lastIndex = tokens.length - 1;
         uint256 targetIndex = getStakedIndex(tokenId_);
 
         if (targetIndex != lastIndex) {
-            // Move the last token to the removed position
             uint256 lastTokenId = tokens[lastIndex];
             tokens[targetIndex] = lastTokenId;
-            // Update the moved token's index
             _setStakedData(lastTokenId, owner_, targetIndex);
         }
         tokens.pop();
     }
 
     function _extractTokenID(uint256 nftId_) internal pure returns (uint256) {
-        return nftId_ & ((1 << (256 - 4)) - 1);  // Get everything except top 4 bits
+        return nftId_ & ((1 << (256 - 4)) - 1);
     }
-    /// @notice Get the staked ERC20 balance for an address
-    /// @param owner_ The address to check
-    /// @return The total amount of staked ERC20 tokens
+
     function balanceOf(address owner_) external view returns (uint256) {
         return _stakedBalance[owner_];
     }
 
-    /// @notice Get all staked tokens for an address
-    /// @param owner_ The address to check
-    /// @return fullTokenId Array of complete NFT IDs (including series)
-    /// @return formatId Array of formatted/display IDs
     function getStakedERC721Tokens(address owner_) external view returns (uint256[] memory fullTokenId, uint256[] memory formatId) {
         uint256 len = _stakedTokens[owner_].length;
         fullTokenId = new uint256[](len);
@@ -184,21 +148,14 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
         return (fullTokenId, formatId);
     }
 
-    /// @notice Get the total ERC20 balance of an address including staked tokens
-    /// @param owner_ The address to check
-    /// @return The sum of ERC20 balance and staked balance
     function erc20TotalBalanceOf(address owner_) external view returns (uint256) {
         return nguToken.balanceOf(owner_) + _stakedBalance[owner_];
     }
 
-    /// @notice Get the NFT ID format for a given token ID
-    /// @param tokenId_ The token ID to format
-    /// @return The formatted NFT ID
     function getNFTId(uint256 tokenId_) external pure override returns (uint256) {
         return tokenId_;
     }
 
-    /// @notice Required for IERC721Receiver
     function onERC721Received(
         address,
         address,
@@ -208,12 +165,10 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
         return IERC721Receiver.onERC721Received.selector;
     }
 
-    /// @notice Implementation of IERC165
     function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
         return
             interfaceId == type(INGU505Staking).interfaceId ||
             interfaceId == type(IERC721Receiver).interfaceId;
     }
 
-    error IndexOverflow();
 } 
