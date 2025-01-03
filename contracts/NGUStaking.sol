@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {INGU505Staking} from "./interfaces/INGU505Staking.sol";
 import {NumberGoUp} from "./NumberGoUp.sol";
+import {INGU505Base} from "./NGU505Base.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/interfaces/IERC721Receiver.sol";
@@ -11,24 +12,29 @@ import {IERC721Receiver} from "@openzeppelin/contracts/interfaces/IERC721Receive
 /// @notice External staking contract for NumberGoUp NFTs
 contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver {
     /// @notice The NumberGoUp token contract
-    NumberGoUp public immutable nguToken;
+    INGU505Base public immutable nguToken;
 
     /// @notice Mapping of user address to their staked token IDs
-    mapping(address => uint256[]) private _stakedTokens;
+    mapping(address => uint256[]) internal _stakedTokens;
 
     /// @notice Mapping of token ID to packed staking data (address + index)
     /// @dev Format: [160 bits for address][96 bits for index]
-    mapping(uint256 => uint256) private _stakedData;
+    mapping(uint256 => uint256) internal _stakedData;
 
     /// @notice Mapping of user address to their staked ERC20 balance
-    mapping(address => uint256) private _stakedBalance;
+    mapping(address => uint256) internal _stakedBalance;
 
     /// @notice Bit masks for packed data
     uint256 private constant _BITMASK_OWNER = (1 << 160) - 1;
     uint256 private constant _BITMASK_INDEX = ((1 << 96) - 1) << 160;
 
     constructor(address nguToken_, address initialOwner_) Ownable(initialOwner_) {
-        nguToken = NumberGoUp(nguToken_);
+        nguToken = INGU505Base(nguToken_);
+    }
+
+    function getStakedIndex(uint256 tokenId) public view returns (uint256) {
+        uint256 data = _stakedData[tokenId];
+        return data >> 160;
     }
 
     function getStakedOwner(uint256 tokenId_) public view returns (address owner_) {
@@ -38,27 +44,16 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
         }
     }
 
-    function getStakedIndex(uint256 tokenId_) public view returns (uint256 index_) {
-        uint256 data = _stakedData[tokenId_];
-        assembly {
-            index_ := shr(160, data)
-        }
+    function _setStakedData(uint256 tokenId, address owner, uint256 index) internal {
+        _stakedData[tokenId] = (uint256(uint160(owner)) | (index << 160));
     }
 
-    function _setStakedData(uint256 tokenId_, address owner_, uint256 index_) internal {
-        if (index_ > type(uint96).max) revert IndexOverflow();
-        uint256 data;
-        assembly {
-            data := add(
-                and(owner_, _BITMASK_OWNER),
-                shl(160, index_)
-            )
-        }
-        _stakedData[tokenId_] = data;
+    function _clearStakedData(uint256 tokenId) internal {
+        delete _stakedData[tokenId];
     }
 
-    function stake(uint256[] calldata ids_) external nonReentrant returns (bool) {
-        uint256 length = ids_.length;
+    function stake(uint256[] calldata tokenIds) external nonReentrant returns (bool) {
+        uint256 length = tokenIds.length;
         if (length == 0) revert EmptyStakingArray();
         if (nguToken.erc721TransferExempt(msg.sender)) revert InvalidStakingExemption();
         if (nguToken.erc721TransferExempt(address(this))) revert InvalidStakingExemption();
@@ -67,49 +62,57 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
         uint256 balance = nguToken.balanceOf(msg.sender);
         if (balance < totalValue) revert StakerInsufficientBalance(totalValue, balance);
 
-        uint256 successfulStakes = 0;
         for (uint256 i = 0; i < length;) {
-            uint256 tokenId = ids_[i];
+            uint256 tokenId = tokenIds[i];
             if (getStakedOwner(tokenId) != address(0)) revert TokenAlreadyStaked(tokenId);
             if (nguToken.ownerOf(tokenId) != msg.sender) revert NotTokenOwner();
-
-            nguToken.erc721TransferFrom(msg.sender, address(this), tokenId);
 
             uint256 newIndex = _stakedTokens[msg.sender].length;
             _stakedTokens[msg.sender].push(tokenId);
             _setStakedData(tokenId, msg.sender, newIndex);
-            unchecked { successfulStakes++; }
+            
+            // Transfer NFT to staking contract
+            nguToken.erc721TransferFrom(msg.sender, address(this), tokenId);
+            
             unchecked { i++; }
             emit Staked(msg.sender, tokenId);
         }
 
-        _stakedBalance[msg.sender] += successfulStakes * nguToken.units();
-        
+        _stakedBalance[msg.sender] += length * nguToken.units();
         return true;
     }
 
-    function unstake(uint256[] calldata ids_) external nonReentrant returns (bool) {
-        uint256 length = ids_.length;
+    function unstake(uint256[] calldata tokenIds) external nonReentrant returns (bool) {
+        uint256 length = tokenIds.length;
         if (length == 0) revert EmptyStakingArray();
 
-        uint256 successfulUnstakes = 0;
         for (uint256 i = 0; i < length;) {
-            uint256 tokenId = ids_[i];
+            uint256 tokenId = tokenIds[i];
             
-            address stakedOwner = getStakedOwner(tokenId);  
+            address stakedOwner = getStakedOwner(tokenId);
             if (stakedOwner == address(0)) revert TokenNotStaked(tokenId);
             if (stakedOwner != msg.sender) revert NotTokenOwner();
 
-            _removeStakedToken(msg.sender, tokenId);
-            delete _stakedData[tokenId];
+            uint256 lastIndex = _stakedTokens[msg.sender].length - 1;
+            uint256 tokenIndex = getStakedIndex(tokenId);
+            
+            // If not the last token, move the last token to this position
+            if (tokenIndex != lastIndex) {
+                uint256 lastTokenId = _stakedTokens[msg.sender][lastIndex];
+                _stakedTokens[msg.sender][tokenIndex] = lastTokenId;
+                _setStakedData(lastTokenId, msg.sender, tokenIndex);
+            }
+            _stakedTokens[msg.sender].pop();
+            _clearStakedData(tokenId);
+
+            // Transfer NFT back to user
             nguToken.erc721TransferFrom(address(this), msg.sender, tokenId);
+            
             emit Unstaked(msg.sender, tokenId);
-            unchecked { successfulUnstakes++; }
             unchecked { i++; }
         }
 
-        _stakedBalance[msg.sender] -= successfulUnstakes * nguToken.units();
-
+        _stakedBalance[msg.sender] -= length * nguToken.units();
         return true;
     }
 

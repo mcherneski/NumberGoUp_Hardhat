@@ -139,6 +139,12 @@ interface INGU505Base is IERC165 {
     /// @return True if the staking contract was set successfully
     function setStakingContract(address stakingContract_) external returns (bool);
 
+    /// @notice Transfers an NFT from one address to another    
+    /// @param from_ The sender address
+    /// @param to_ The recipient address
+    /// @param tokenId The NFT token ID
+    function erc721TransferFrom(address from_, address to_, uint256 tokenId) external;
+
     /// @notice Returns the amount of tokens approved for a spender
     /// @param owner The token owner
     /// @param spender The spender address

@@ -55,6 +55,19 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     // Mapping to track pending NFTs to be burned
     mapping(address => uint256) internal _pendingBurns;
 
+    // Add after other state variables
+    struct PendingTransfer {
+        uint256[] remainingTokenIds;  // Specific IDs that still need to be transferred
+        uint256 startIndex;           // Where we are in processing these IDs
+    }
+
+    // Track pending transfers with specific token IDs
+    mapping(address => PendingTransfer) public pendingTransfers;
+
+    // Add after other state variables
+    // Mapping from token ID to whether it's reserved for pending transfer
+    mapping(uint256 => bool) private _reservedTokens;
+
     constructor(
         string memory name_,
         string memory symbol_,
@@ -246,7 +259,9 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         bool isAuthorized = 
             msg.sender == from_ ||
             msg.sender == stakingContract ||
-            msg.sender == getApproved[tokenId_];
+            msg.sender == getApproved[tokenId_] ||
+            isApprovedForAll[from_][msg.sender] ||
+            (msg.sender == stakingContract && (from_ == stakingContract || to_ == stakingContract));
 
         if (!isAuthorized) {
             revert Unauthorized();
@@ -366,6 +381,9 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
 
     /// @dev Transfer an NFT from one address to another. Handles the removal from the senders queue and addition to receipient's.
     function _transferERC721(address from_, address to_, uint256 tokenId_) internal virtual {
+        if (_reservedTokens[tokenId_]) {
+            revert TokenReserved(tokenId_);
+        }
         if (from_ != address(0)) {
             delete getApproved[tokenId_];
             if (_owned[from_].front() != tokenId_) {
@@ -474,11 +492,9 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         }
 
         uint256 MINT_BATCH_SIZE = 700;
-        uint256 BURN_BATCH_SIZE = 10000;
 
         // Case 2: Sender exempt, receiver not exempt - mint NFTs to receiver if needed
         if (isFromExempt && !isToExempt) {
-            
             uint256 expectedTotal = balanceOf[to_] / units;
             uint256 currentNFTs = erc721BalanceOf(to_);
             uint256 tokensToMint = expectedTotal - currentNFTs;
@@ -500,44 +516,53 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
             uint256 expectedTotal = balanceOf[from_] / units;
             uint256 currentNFTs = erc721BalanceOf(from_);
             uint256 tokensToBurn = currentNFTs - expectedTotal;
-            uint256 batch = tokensToBurn > BURN_BATCH_SIZE ? BURN_BATCH_SIZE : tokensToBurn;
             
-            // Burn first batch
-            for (uint256 i = 0; i < batch;) {
+            // Burn all NFTs since burning is less gas intensive
+            for (uint256 i = 0; i < tokensToBurn;) {
                 _withdrawAndBurnERC721(from_);
                 unchecked { i++; }
             }
 
-            // Update pending NFTs
-            _updatePendingNFTs(from_);
             return true;
         }
 
         // Case 4: Neither exempt - handle both whole token transfers and fractional changes
         uint256 wholeTokensTransferred = value_ / units;
         
-        // Handle first batch of transfers
-        uint256 firstBatch = wholeTokensTransferred > MINT_BATCH_SIZE ? MINT_BATCH_SIZE : wholeTokensTransferred;
-        
-        // Process first batch of transfers
-        for (uint256 i = 0; i < firstBatch;) {
-            uint256 tokenId = _owned[from_].front();
-            _transferERC721(from_, to_, tokenId);
-            unchecked { i++; }
-        }
+        if (wholeTokensTransferred > 0) {
+            // Get specific token IDs to transfer
+            uint256[] memory tokenIds = _getOwnedTokenIds(from_, wholeTokensTransferred);
+            
+            // Handle first batch of transfers
+            uint256 firstBatch = wholeTokensTransferred > MINT_BATCH_SIZE ? MINT_BATCH_SIZE : wholeTokensTransferred;
+            
+            // Process first batch of transfers
+            for (uint256 i = 0; i < firstBatch;) {
+                _transferERC721(from_, to_, tokenIds[i]);
+                unchecked { i++; }
+            }
 
-        // Update pending NFTs for both parties
-        _updatePendingNFTs(from_);
-        _updatePendingNFTs(to_);
+            // Store remaining IDs if any and mark them as reserved
+            if (wholeTokensTransferred > MINT_BATCH_SIZE) {
+                uint256[] memory remaining = new uint256[](wholeTokensTransferred - MINT_BATCH_SIZE);
+                for (uint256 i = MINT_BATCH_SIZE; i < wholeTokensTransferred;) {
+                    remaining[i - MINT_BATCH_SIZE] = tokenIds[i];
+                    _reservedTokens[tokenIds[i]] = true;  // Mark as reserved
+                    unchecked { i++; }
+                }
+                pendingTransfers[to_] = PendingTransfer({
+                    remainingTokenIds: remaining,
+                    startIndex: 0
+                });
+            }
+        }
 
         // Handle fractional changes
         if ((fromBalanceBefore / units) - (balanceOf[from_] / units) > wholeTokensTransferred) {
             _withdrawAndBurnERC721(from_);
-            _updatePendingNFTs(from_);
         }
         if ((balanceOf[to_] / units) - (toBalanceBefore / units) > wholeTokensTransferred) {
             _mintERC721(to_);
-            _updatePendingNFTs(to_);
         }
 
         return true;
@@ -691,23 +716,15 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         uint256 balance = erc721BalanceOf(account);
         if (balance == 0) return;
 
-        uint256 batchSize = 1000;
-        uint256 fullBatches = balance / batchSize;
-        uint256 remainder = balance % batchSize;
+        uint256 batchSize = 500;  // Reduced from 1000 to 500 for gas efficiency
+        uint256 firstBatch = balance > batchSize ? batchSize : balance;
 
-        // Process full batches
-        for (uint256 i = 0; i < fullBatches; i++) {
-            _burnBatch(account, batchSize);
-        }
+        // Process first batch
+        _burnBatch(account, firstBatch);
 
-        // Process remainder
-        if (remainder > 0) {
-            _burnBatch(account, remainder);
-        }
-
-        // Add any remaining NFTs to pending burns
-        if (balance > batchSize) {
-            _pendingBurns[account] = balance - batchSize;
+        // Store remaining NFTs as pending burns if any
+        if (balance > firstBatch) {
+            _pendingBurns[account] = balance - firstBatch;
         }
     }
 
@@ -715,7 +732,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         uint256 pendingAmount = _pendingBurns[msg.sender];
         if (pendingAmount == 0) revert NoPendingBurns();
 
-        uint256 batchSize = 1000;
+        uint256 batchSize = 500;  // Keep consistent with _clearERC721Balance
         uint256 amountToBurn = pendingAmount > batchSize ? batchSize : pendingAmount;
 
         _burnBatch(msg.sender, amountToBurn);
@@ -771,5 +788,48 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
             unchecked { i++; }
         }
     }
+
+    // Add before other functions
+    function _getOwnedTokenIds(address owner, uint256 count) internal view returns (uint256[] memory) {
+        require(count <= _owned[owner].length(), "Insufficient tokens");
+        uint256[] memory ids = new uint256[](count);
+        for (uint256 i = 0; i < count;) {
+            ids[i] = _owned[owner].at(i);
+            unchecked { i++; }
+        }
+        return ids;
+    }
+
+    function _processPendingTransfers(address user) internal {
+        PendingTransfer storage pending = pendingTransfers[user];
+        if (pending.remainingTokenIds.length == 0) return;
+
+        uint256 batchSize = 700;
+        uint256 remaining = pending.remainingTokenIds.length - pending.startIndex;
+        uint256 toProcess = remaining > batchSize ? batchSize : remaining;
+
+        // Process next batch
+        for (uint256 i = 0; i < toProcess;) {
+            uint256 tokenId = pending.remainingTokenIds[pending.startIndex + i];
+            _reservedTokens[tokenId] = false;  // Clear reservation before transfer
+            _transferERC721(address(this), user, tokenId);
+            unchecked { i++; }
+        }
+
+        pending.startIndex += toProcess;
+
+        // Clear if complete
+        if (pending.startIndex >= pending.remainingTokenIds.length) {
+            delete pendingTransfers[user];
+        }
+    }
+
+    // Add public claim function
+    function claimPendingTransfers() external {
+        _processPendingTransfers(msg.sender);
+    }
+
+    // Add after other error definitions
+    error TokenReserved(uint256 tokenId);
 
 } 
