@@ -51,6 +51,9 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
 
     // Add state variable for pending NFTs
     mapping(address => uint256) private _pendingNFTs;
+    
+    // Mapping to track pending NFTs to be burned
+    mapping(address => uint256) internal _pendingBurns;
 
     constructor(
         string memory name_,
@@ -684,24 +687,47 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     }
 
     /// @notice Function to clear NFT balance when adding exemption
-    function _clearERC721Balance(address target_) internal virtual {
-        uint256 erc721Balance = erc721BalanceOf(target_);
-        uint256 BATCH_SIZE = 5000; // Can use larger batches for burns since they're cheaper
+    function _clearERC721Balance(address account) internal {
+        uint256 balance = erc721BalanceOf(account);
+        if (balance == 0) return;
+
+        uint256 batchSize = 1000;
+        uint256 fullBatches = balance / batchSize;
+        uint256 remainder = balance % batchSize;
 
         // Process full batches
-        while (erc721Balance >= BATCH_SIZE) {
-            for (uint256 i = 0; i < BATCH_SIZE;) {
-                _withdrawAndBurnERC721(target_);
-                unchecked { i++; }
-            }
-            erc721Balance -= BATCH_SIZE;
+        for (uint256 i = 0; i < fullBatches; i++) {
+            _burnBatch(account, batchSize);
         }
 
-        // Process remaining NFTs
-        for (uint256 i = 0; i < erc721Balance;) {
-            _withdrawAndBurnERC721(target_);
-            unchecked { i++; }
+        // Process remainder
+        if (remainder > 0) {
+            _burnBatch(account, remainder);
         }
+
+        // Add any remaining NFTs to pending burns
+        if (balance > batchSize) {
+            _pendingBurns[account] = balance - batchSize;
+        }
+    }
+
+    function burnPendingNFTs() external {
+        uint256 pendingAmount = _pendingBurns[msg.sender];
+        if (pendingAmount == 0) revert NoPendingBurns();
+
+        uint256 batchSize = 1000;
+        uint256 amountToBurn = pendingAmount > batchSize ? batchSize : pendingAmount;
+
+        _burnBatch(msg.sender, amountToBurn);
+        _pendingBurns[msg.sender] = pendingAmount - amountToBurn;
+    }
+
+    // Add error for no pending burns
+    error NoPendingBurns();
+
+    // Add view function to check pending burns
+    function pendingBurns(address account) external view returns (uint256) {
+        return _pendingBurns[account];
     }
 
     // ============ Helper Functions ============
@@ -737,6 +763,13 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
 
         // Set pending to the exact difference needed
         _pendingNFTs[user_] = expectedTotal - currentNFTs;
+    }
+
+    function _burnBatch(address account, uint256 amount) internal {
+        for (uint256 i = 0; i < amount;) {
+            _withdrawAndBurnERC721(account);
+            unchecked { i++; }
+        }
     }
 
 } 
