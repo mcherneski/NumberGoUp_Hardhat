@@ -49,12 +49,6 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     uint256 internal _currentSeries = 1; // Start at series 1 (0001) to differentiate from regular amounts
     uint256 private _currentTokenId = 1;  // Start at 1 since we never use ID 0
 
-    // Add state variable for pending NFTs
-    mapping(address => uint256) private _pendingNFTs;
-    
-    // Mapping to track pending NFTs to be burned
-    mapping(address => uint256) internal _pendingBurns;
-
     constructor(
         string memory name_,
         string memory symbol_,
@@ -325,12 +319,16 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     }
 
     /// @notice Sets the ERC721 transfer exemption status for an account.
-    /// @notice Will revert if the account has more than 701 ERC20 tokens, since 701 is our max minting limit.
+    /// @notice Will revert if the account has any ERC20 balance when becoming exempt.
     function _setERC721TransferExempt(address account_, bool value_) internal virtual onlyRole(EXEMPTION_MANAGER_ROLE) {
         if (account_ == address(0)) revert InvalidExemption();
 
         if (_erc721TransferExempt[account_] != value_) {
             if (value_) {
+                // Require zero balance to become exempt
+                if (balanceOf[account_] > 0) {
+                    revert("Cannot make address exempt while holding ERC20 balance");
+                }
                 _clearERC721Balance(account_);
             } else {
                 _reinstateERC721Balance(account_);
@@ -473,25 +471,16 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
             return true;
         }
 
-        uint256 MINT_BATCH_SIZE = 700;
-        uint256 BURN_BATCH_SIZE = 10000;
-
         // Case 2: Sender exempt, receiver not exempt - mint NFTs to receiver if needed
         if (isFromExempt && !isToExempt) {
-            
             uint256 expectedTotal = balanceOf[to_] / units;
             uint256 currentNFTs = erc721BalanceOf(to_);
             uint256 tokensToMint = expectedTotal - currentNFTs;
-            uint256 batch = tokensToMint > MINT_BATCH_SIZE ? MINT_BATCH_SIZE : tokensToMint;
             
-            // Mint first batch
-            for (uint256 i = 0; i < batch;) {
+            for (uint256 i = 0; i < tokensToMint;) {
                 _mintERC721(to_);
                 unchecked { i++; }
             }
-
-            // Update pending NFTs
-            _updatePendingNFTs(to_);
             return true;
         }
 
@@ -500,44 +489,29 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
             uint256 expectedTotal = balanceOf[from_] / units;
             uint256 currentNFTs = erc721BalanceOf(from_);
             uint256 tokensToBurn = currentNFTs - expectedTotal;
-            uint256 batch = tokensToBurn > BURN_BATCH_SIZE ? BURN_BATCH_SIZE : tokensToBurn;
             
-            // Burn first batch
-            for (uint256 i = 0; i < batch;) {
+            for (uint256 i = 0; i < tokensToBurn;) {
                 _withdrawAndBurnERC721(from_);
                 unchecked { i++; }
             }
-
-            // Update pending NFTs
-            _updatePendingNFTs(from_);
             return true;
         }
 
         // Case 4: Neither exempt - handle both whole token transfers and fractional changes
         uint256 wholeTokensTransferred = value_ / units;
         
-        // Handle first batch of transfers
-        uint256 firstBatch = wholeTokensTransferred > MINT_BATCH_SIZE ? MINT_BATCH_SIZE : wholeTokensTransferred;
-        
-        // Process first batch of transfers
-        for (uint256 i = 0; i < firstBatch;) {
+        for (uint256 i = 0; i < wholeTokensTransferred;) {
             uint256 tokenId = _owned[from_].front();
             _transferERC721(from_, to_, tokenId);
             unchecked { i++; }
         }
 
-        // Update pending NFTs for both parties
-        _updatePendingNFTs(from_);
-        _updatePendingNFTs(to_);
-
         // Handle fractional changes
         if ((fromBalanceBefore / units) - (balanceOf[from_] / units) > wholeTokensTransferred) {
             _withdrawAndBurnERC721(from_);
-            _updatePendingNFTs(from_);
         }
         if ((balanceOf[to_] / units) - (toBalanceBefore / units) > wholeTokensTransferred) {
             _mintERC721(to_);
-            _updatePendingNFTs(to_);
         }
 
         return true;
@@ -645,45 +619,11 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         uint256 expectedERC721Balance = balanceOf[target_] / units;
         uint256 actualERC721Balance = erc721BalanceOf(target_);
         uint256 toMint = expectedERC721Balance - actualERC721Balance;
-
-        // Process first batch of 700 immediately
-        uint256 BATCH_SIZE = 700;
-        uint256 firstBatch = toMint > BATCH_SIZE ? BATCH_SIZE : toMint;
         
-        // Mint first batch
-        for (uint256 i = 0; i < firstBatch;) {
+        for (uint256 i = 0; i < toMint;) {
             _mintERC721(target_);
             unchecked { i++; }
         }
-
-        // Store remaining NFTs as pending if any
-        if (toMint > firstBatch) {
-            _pendingNFTs[target_] = toMint - firstBatch;
-        }
-    }
-
-    /// @notice Returns number of NFTs still pending to be minted for an address
-    function pendingNFTs(address account_) public view returns (uint256) {
-        return _pendingNFTs[account_];
-    }
-
-    /// @notice Allows minting of remaining NFTs in batches
-    /// @dev Can be called multiple times until all NFTs are minted
-    function mintPendingNFTs() external {
-        uint256 pending = _pendingNFTs[msg.sender];
-        if (pending == 0) revert InvalidOperation("No pending NFTs");
-
-        uint256 BATCH_SIZE = 700;
-        uint256 toBeMinted = pending > BATCH_SIZE ? BATCH_SIZE : pending;
-        
-        // Mint the batch
-        for (uint256 i = 0; i < toBeMinted;) {
-            _mintERC721(msg.sender);
-            unchecked { i++; }
-        }
-
-        // Update pending count
-        _pendingNFTs[msg.sender] = pending - toBeMinted;
     }
 
     /// @notice Function to clear NFT balance when adding exemption
@@ -691,43 +631,10 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         uint256 balance = erc721BalanceOf(account);
         if (balance == 0) return;
 
-        uint256 batchSize = 1000;
-        uint256 fullBatches = balance / batchSize;
-        uint256 remainder = balance % batchSize;
-
-        // Process full batches
-        for (uint256 i = 0; i < fullBatches; i++) {
-            _burnBatch(account, batchSize);
+        for (uint256 i = 0; i < balance;) {
+            _withdrawAndBurnERC721(account);
+            unchecked { i++; }
         }
-
-        // Process remainder
-        if (remainder > 0) {
-            _burnBatch(account, remainder);
-        }
-
-        // Add any remaining NFTs to pending burns
-        if (balance > batchSize) {
-            _pendingBurns[account] = balance - batchSize;
-        }
-    }
-
-    function burnPendingNFTs() external {
-        uint256 pendingAmount = _pendingBurns[msg.sender];
-        if (pendingAmount == 0) revert NoPendingBurns();
-
-        uint256 batchSize = 1000;
-        uint256 amountToBurn = pendingAmount > batchSize ? batchSize : pendingAmount;
-
-        _burnBatch(msg.sender, amountToBurn);
-        _pendingBurns[msg.sender] = pendingAmount - amountToBurn;
-    }
-
-    // Add error for no pending burns
-    error NoPendingBurns();
-
-    // Add view function to check pending burns
-    function pendingBurns(address account) external view returns (uint256) {
-        return _pendingBurns[account];
     }
 
     // ============ Helper Functions ============
@@ -748,28 +655,6 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
 
     function _extractTokenID(uint256 nftId_) internal pure returns (uint256) {
         return nftId_ & ((1 << (256 - 4)) - 1);  // Get everything except top 4 bits
-    }
-
-    // Add helper function to safely update pending NFTs
-    function _updatePendingNFTs(address user_) internal {
-        uint256 expectedTotal = balanceOf[user_] / units;
-        uint256 currentNFTs = erc721BalanceOf(user_);
-        
-        // If user has more NFTs than they should (shouldn't happen, but safe check)
-        if (currentNFTs > expectedTotal) {
-            _pendingNFTs[user_] = 0;
-            return;
-        }
-
-        // Set pending to the exact difference needed
-        _pendingNFTs[user_] = expectedTotal - currentNFTs;
-    }
-
-    function _burnBatch(address account, uint256 amount) internal {
-        for (uint256 i = 0; i < amount;) {
-            _withdrawAndBurnERC721(account);
-            unchecked { i++; }
-        }
     }
 
 } 

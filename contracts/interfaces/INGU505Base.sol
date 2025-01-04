@@ -291,14 +291,4 @@ interface INGU505Base is IERC165 {
     /// @param tokenId_ The token ID to query
     /// @return index_ The index in the owner's queue
     function getOwnedIndex(uint256 tokenId_) external view returns (uint256 index_);
-
-    /// @notice Returns number of NFTs still pending to be minted for an address
-    /// @param account_ The address to query
-    /// @return The number of NFTs pending to be minted
-    function pendingNFTs(address account_) external view returns (uint256);
-
-    /// @notice Allows minting of remaining NFTs in batches
-    /// @dev Can be called multiple times until all NFTs are minted
-    function mintPendingNFTs() external;
-
 } 

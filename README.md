@@ -13,11 +13,12 @@ This contract is designed to handle staking of ERC721 tokens. It allows users to
 ### Key Contract Functions
 
 #### NumberGoUp Contract
-```solidity
+```typescript
 // Read functions
 balanceOf(address account) returns (uint256)           // Get ERC20 balance
 ownerOf(uint256 tokenId) returns (address)            // Get NFT owner
 owneds(address account) returns (uint256[])     // Get all NFTs owned by an address
+
 erc721TransferExempt(address account) returns (bool)  // Check if address is transfer exempt
 units() returns (uint256)                             // Get the base unit value (1e18)
 decimals() returns (uint8)                            // Get token decimals (18)
@@ -31,7 +32,7 @@ setERC721TransferExempt(address account, bool exempt) // Set transfer exempt sta
 ```
 
 #### NGUStaking Contract
-```solidity
+```typescript
 // Read functions
 stakedERC20TokenBank(address account) returns (uint256) // Get staked balance
 erc20TotalBalanceOf(address account) returns (uint256)  // Get total balance (staked + unstaked)
@@ -43,16 +44,30 @@ stake(uint256[] calldata tokenIds)                     // Stake multiple NFTs
 unstake(uint256[] calldata tokenIds)                   // Unstake multiple NFTs
 ```
 
+### Event-Emitting Functions
+
+| Function | Events Emitted | Description |
+|----------|---------------|-------------|
+| `transfer` | `ERC20Events.Transfer`, `ERC721Events.Transfer`, `ERC721Events.Burn`, `ERC721Events.Mint` | Emits different events based on transfer type (exempt/non-exempt) |
+| `approve` | `ERC20Events.Approval` | Emits when ERC20 approval is granted |
+| `setApprovalForAll` | `ERC721Events.ApprovalForAll` | Emits when ERC721 approval for all tokens is set |
+| `_mintERC721` | `ERC721Events.Mint`, `NFTSeriesChanged` | Emits when new NFT is minted and series changes |
+| `_withdrawAndBurnERC721` | `ERC721Events.Burn` | Emits when NFT is burned |
+| `setERC721TransferExempt` | `ERC721TransferExemptSet` | Emits when address exemption status changes |
+| `addExemptionManager` | `ExemptionManagerAdded` | Emits when new exemption manager is added |
+
 ### Gas Usage Guidelines
 1. **Transfer Operations**
-   - Non-exempt → Exempt: ~40K gas per transfer
-   - Non-exempt → Non-exempt: ~40-50K gas per transfer
+   - Exempt → Non-exempt (Minting): ~71K gas per NFT, max 400 NFTs per tx
+   - Non-exempt → Exempt (Burning): ~14K gas per NFT, max 700 NFTs per tx
+   - Non-exempt → Non-exempt: ~57K gas per NFT, max 400 NFTs per tx
+   - Exempt → Exempt: ~52.5K gas flat rate, tested up to 10,000 tokens
    - Recommend staying under 80% of limits for safety
 
 2. **Staking Operations**
-   - Maximum batch size: 1000 tokens per transaction
-   - Stake: ~40-50K gas per operation
-   - Unstake: ~40-50K gas per operation
+   - Maximum batch size: 400 tokens per transaction (based on transfer limits)
+   - Stake: ~50-60K gas per operation
+   - Unstake: ~50-60K gas per operation
 
 ### Common Integration Patterns
 
@@ -209,23 +224,24 @@ The staking system is designed to work seamlessly with the base contract's queue
 The contract has been tested and optimized for batch operations, with the following maximum limits:
 
 1. Transfer Limits:
-   - Exempt to non-exempt: 323 tokens
-   - Non-exempt to non-exempt: 76 tokens
-   - Non-exempt to exempt: 250 tokens
+   - Exempt to non-exempt (Minting): 400 tokens (28.5M gas total)
+   - Non-exempt to non-exempt: 400 tokens (22.8M gas total)
+   - Non-exempt to exempt (Burning): 700 tokens (9.8M gas total)
+   - Exempt to exempt: Tested up to 10,000 tokens (constant ~52.5K gas)
    - These limits are due to gas constraints and queue operations
 
 2. Staking Limits:
-   - Maximum batch stake: 46 tokens
-   - Maximum batch unstake: 46 tokens (same as staking)
+   - Maximum batch stake: 400 tokens (based on transfer limits)
+   - Maximum batch unstake: 400 tokens (same as staking)
    - Limits are based on gas usage for queue management
 
 3. Gas Considerations:
-   - Limits are based on a block gas limit of 30M gas
+   - Limits are based on a block gas limit of 50M gas
    - Actual limits may vary slightly based on network conditions
    - Operations near the limits should include sufficient gas margin
 
 4. Best Practices:
-   - Keep batch sizes well below limits for safety
+   - Keep batch sizes well below limits for safety (recommend 80% of max)
    - Consider breaking large operations into multiple smaller batches
    - Monitor gas usage when approaching limits
    - Include appropriate gas limits in client applications
