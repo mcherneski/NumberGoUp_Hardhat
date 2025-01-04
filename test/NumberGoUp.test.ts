@@ -228,7 +228,6 @@ describe("NumberGoUp Tests", function () {
     describe("Non-Exempt to Non-Exempt Transfers", function () {
         it("Should transfer single token", async function () {
 
-
             console.log("\nSingle Token Transfer (Non-Exempt → Non-Exempt): 1 ERC20");
             // Initial state
             const [initialTokenId1, initialFormatId1] = await numberGoUp.owned(nonExempt1.address);
