@@ -80,7 +80,7 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
             _setStakedData(tokenId, msg.sender, newIndex);
             unchecked { successfulStakes++; }
             unchecked { i++; }
-            emit Staked(msg.sender, tokenId);
+            emit Staked(msg.sender, tokenId, _extractTokenID(tokenId));
         }
 
         _stakedBalance[msg.sender] += successfulStakes * nguToken.units();
@@ -103,7 +103,7 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
             _removeStakedToken(msg.sender, tokenId);
             delete _stakedData[tokenId];
             nguToken.erc721TransferFrom(address(this), msg.sender, tokenId);
-            emit Unstaked(msg.sender, tokenId);
+            emit Unstaked(msg.sender, tokenId, _extractTokenID(tokenId));
             unchecked { successfulUnstakes++; }
             unchecked { i++; }
         }

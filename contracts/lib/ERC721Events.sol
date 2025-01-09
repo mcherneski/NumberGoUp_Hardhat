@@ -10,9 +10,23 @@ library ERC721Events {
   event Approval(
     address indexed owner,
     address indexed spender,
-    uint256 indexed id
+    uint256 indexed tokenId, 
+    uint256 id
   );
-  event Transfer(address indexed from, address indexed to, uint256 indexed id);
-  event Burn(address indexed from, uint256 indexed id);
-  event Mint(address indexed to, uint256 indexed id);
+  event Transfer(
+    address indexed from,
+    address indexed to,
+    uint256 indexed tokenId,
+    uint256 id
+  );
+  event Burn(
+    address indexed from,
+    uint256 indexed tokenId,
+    uint256 id
+  );
+  event Mint(
+    address indexed to,
+    uint256 indexed tokenId,
+    uint256 id
+  );
 }

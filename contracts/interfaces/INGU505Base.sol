@@ -14,11 +14,6 @@ interface INGU505Base is IERC165 {
     /// @param value The approved amount
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
-    /// @notice Emitted when an NFT is minted
-    /// @param to The recipient address
-    /// @param id The NFT token ID
-    event ERC721Minted(address indexed to, uint256 indexed id);
-
     /// @notice Emitted when an address is granted the exemption manager role
     /// @param account The address that was granted the role
     event ExemptionManagerAdded(address indexed account);
@@ -109,6 +104,13 @@ interface INGU505Base is IERC165 {
     error InvalidStakingContract();
 
     // Core ERC20 functions
+    /// @notice Safely transfers tokens from sender to recipient
+    /// @param to The recipient address
+    /// @param value The amount to transfer
+    /// @return success True if the transfer succeeded
+    /// @dev Wraps the transfer function which includes all necessary safety checks
+    function safeTransfer(address to, uint256 value) external returns (bool);
+
     /// @notice Transfers tokens from sender to recipient
     /// @param to The recipient address
     /// @param value The amount to transfer
@@ -291,4 +293,9 @@ interface INGU505Base is IERC165 {
     /// @param tokenId_ The token ID to query
     /// @return index_ The index in the owner's queue
     function getOwnedIndex(uint256 tokenId_) external view returns (uint256 index_);
+
+    /// @notice Get the human readable token ID from a full token ID
+    /// @param tokenId_ The full token ID including series bits
+    /// @return The human readable token ID (without series bits)
+    function getHumanReadableID(uint256 tokenId_) external pure returns (uint256);
 } 

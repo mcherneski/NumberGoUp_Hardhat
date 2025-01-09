@@ -9,6 +9,7 @@ import * as dotenv from "dotenv";
 dotenv.config();
 
 const BASE_MAINNET_RPC = process.env.BASE_MAINNET_RPC || "https://mainnet.base.org";
+const BASE_SEPOLIA_RPC = process.env.BASE_SEPOLIA_RPC || "https://sepolia.base.org";
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "0000000000000000000000000000000000000000000000000000000000000000";
 
 const config: HardhatUserConfig = {
@@ -50,6 +51,14 @@ const config: HardhatUserConfig = {
         }
       }
     },
+    baseMainnet: {
+      url: BASE_MAINNET_RPC,
+      accounts: [PRIVATE_KEY],
+      chainId: 8453,
+      gasPrice: "auto",
+      gas: 5000000,
+      allowUnlimitedContractSize: true
+    },
     localhost: {
       url: "http://127.0.0.1:8545",
       chainId: 31337,
@@ -67,7 +76,7 @@ const config: HardhatUserConfig = {
       allowUnlimitedContractSize: true
     },
     baseSepolia: {
-      url: "https://sepolia.base.org",
+      url: BASE_SEPOLIA_RPC,
       accounts: [PRIVATE_KEY],
       chainId: 84532,
       gasPrice: "auto",
@@ -78,6 +87,14 @@ const config: HardhatUserConfig = {
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY || "",
     customChains: [
+      {
+        network: "baseMainnet",
+        chainId: 8453,
+        urls: {
+          apiURL: "https://api.basescan.org/api",
+          browserURL: "https://basescan.org"
+        }
+      },
       {
         network: "baseSepolia",
         chainId: 84532,

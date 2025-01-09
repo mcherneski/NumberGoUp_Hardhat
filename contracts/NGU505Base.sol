@@ -150,6 +150,10 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
     }
 
     // ============ External Transfer Functions ============
+    function safeTransfer(address to_, uint256 value_) public virtual returns (bool) {
+        return transfer(to_, value_);
+    }
+
     function transfer(address to_, uint256 value_) public virtual override returns (bool) {
         if (to_ == address(0)) revert InvalidRecipient();
         if (value_ == 0) revert InvalidTransfer();
@@ -174,10 +178,10 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         if (_isNFTID(valueOrId_)) {
             // This is a staking operation. Users can't send NFTs to other users.
             erc721TransferFrom(from_, to_, valueOrId_);
+            return true;
         } else {
             return erc20TransferFrom(from_, to_, valueOrId_);
         }
-        return true;
     }
 
     function safeTransferFrom(
@@ -313,7 +317,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
             emit NFTSeriesChanged(_currentSeries - 1, _currentSeries);
             _addToOwned(to_, nftId);
 
-            emit ERC721Events.Mint(to_, nftId);
+            emit ERC721Events.Mint(to_, nftId, _extractTokenID(nftId));
             return nftId;
         }
     }
@@ -324,14 +328,9 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         if (account_ == address(0)) revert InvalidExemption();
 
         if (_erc721TransferExempt[account_] != value_) {
-            if (value_) {
-                // Require zero balance to become exempt
-                if (balanceOf[account_] > 0) {
-                    revert("Cannot make address exempt while holding ERC20 balance");
-                }
-                _clearERC721Balance(account_);
-            } else {
-                _reinstateERC721Balance(account_);
+            // Require zero balance to become exempt
+            if (balanceOf[account_] > 0) {
+                revert("ERC20 Balance must be zero to change exempt status.");
             }
             _erc721TransferExempt[account_] = value_;
             emit ERC721TransferExemptSet(account_, value_);
@@ -359,7 +358,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         uint256 tokenId = _owned[from_].popFront();
         delete _ownedData[tokenId];
 
-        emit ERC721Events.Burn(from_, tokenId);
+        emit ERC721Events.Burn(from_, tokenId, _extractTokenID(tokenId));
     }
 
     /// @dev Transfer an NFT from one address to another. Handles the removal from the senders queue and addition to receipient's.
@@ -377,7 +376,7 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         } else {
             _addToOwned(to_, tokenId_);
         }
-        emit ERC721Events.Transfer(from_, to_, tokenId_);
+        emit ERC721Events.Transfer(from_, to_, tokenId_, _extractTokenID(tokenId_));
     }
 
     // ============ Internal Ownership Management ============
@@ -556,13 +555,14 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
                 keccak256(
                     abi.encode(
                         keccak256(
-                            "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+                            "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline,uint256 chainId)"
                         ),
                         owner,
                         spender,
                         value,
                         nonces[owner]++,
-                        deadline
+                        deadline,
+                        block.chainid
                     )
                 )
             )
@@ -614,18 +614,6 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
         return hasRole(EXEMPTION_MANAGER_ROLE, account_);
     }
 
-    /// @notice Function to reinstate NFT balance when removing exemption
-    function _reinstateERC721Balance(address target_) internal virtual {
-        uint256 expectedERC721Balance = balanceOf[target_] / units;
-        uint256 actualERC721Balance = erc721BalanceOf(target_);
-        uint256 toMint = expectedERC721Balance - actualERC721Balance;
-        
-        for (uint256 i = 0; i < toMint;) {
-            _mintERC721(target_);
-            unchecked { i++; }
-        }
-    }
-
     /// @notice Function to clear NFT balance when adding exemption
     function _clearERC721Balance(address account) internal {
         uint256 balance = erc721BalanceOf(account);
@@ -655,6 +643,13 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
 
     function _extractTokenID(uint256 nftId_) internal pure returns (uint256) {
         return nftId_ & ((1 << (256 - 4)) - 1);  // Get everything except top 4 bits
+    }
+
+    /// @notice Get the human readable token ID from a full token ID
+    /// @param tokenId_ The full token ID including series bits
+    /// @return The human readable token ID (without series bits)
+    function getHumanReadableID(uint256 tokenId_) public pure returns (uint256) {
+        return _extractTokenID(tokenId_);
     }
 
 } 

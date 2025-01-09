@@ -11,12 +11,12 @@ interface INGU505Staking is IERC165 {
     /// @notice Emitted when NFTs are staked
     /// @param staker The address that staked the NFTs
     /// @param tokenId Array of staked NFT IDs
-    event Staked(address indexed staker, uint256 tokenId);
+    event Staked(address indexed staker, uint256 tokenId, uint256 indexed id);
 
     /// @notice Emitted when NFTs are unstaked
     /// @param staker The address that unstaked the NFTs
     /// @param tokenId Array of unstaked NFT IDs
-    event Unstaked(address indexed staker, uint256 tokenId);
+    event Unstaked(address indexed staker, uint256 tokenId, uint256 indexed id);
 
     // Errors
 

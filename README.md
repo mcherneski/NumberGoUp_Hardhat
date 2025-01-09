@@ -1,247 +1,161 @@
-# NGU505 Staking Contract
-
-## Contract ABIs
-- [NGU505Base ABI](./artifacts/contracts/NGU505Base.sol/NGU505Base.json)
-- [NGUStaking ABI](./artifacts/contracts/NGUStaking.sol/NGUStaking.json)
-- [NumberGoUp ABI](./artifacts/contracts/NumberGoUp.sol/NumberGoUp.json)
+# NumberGoUp Token & Staking Contract
 
 ## Overview
-This contract is designed to handle staking of ERC721 tokens. It allows users to stake their NFTs and receive ERC20 tokens in return. The staked NFTs are locked and cannot be transferred, but the ERC20 tokens can be used normally.
+The NumberGoUp (NGU) token is a hybrid ERC20/ERC721 token (ERC404) that automatically converts between fungible tokens and NFTs based on the holder's status. The contract includes a staking mechanism that allows users to stake their NFTs while maintaining their ERC20 balance.
 
-## Frontend Developer Guide
+## Contract Architecture
 
-### Key Contract Functions
+### Core Components
+1. **NGU505Base**: Base contract implementing hybrid ERC20/ERC721 functionality
+2. **NumberGoUp**: Main token contract extending NGU505Base with ERC404 and Uniswap V3 integration
+3. **NGUStaking**: Staking contract for NFT management
+4. **ERC404UniswapV3Exempt**: Extension for Uniswap V3 compatibility
 
-#### NumberGoUp Contract
+### Key Features
+- Automatic NFT minting/burning based on transfers
+- Transfer exemption system for designated addresses
+- Series-based NFT ID system (1-15, using 4 bits)
+- Queue-based NFT management
+- Integrated staking mechanism
+- Uniswap V3 integration
+- 5 rarity tiers with deterministic distribution
+
+## NFT System
+
+### NFT ID Format
+- Format: Series (4 bits) + Token ID (252 bits)
+- Series range: 1-15 (using 4 bits)
+- Token ID range: 1 to 10 billion per series
+- Example: `0x1000000000000001` = Series 1, Token 1
+
+### Rarity Tiers
+The contract implements 5 rarity variants with the following distribution:
+1. Rarity 1: 3% (Ultra Rare)
+2. Rarity 2: 9.7% (Rare)
+3. Rarity 3: 15.5% (Uncommon)
+4. Rarity 4: 24.9% (Common)
+5. Rarity 5: 46.9% (Basic)
+
+### Series Progression
+- Starts at Series 1 (0001)
+- Increments when token ID reaches limit
+- Maximum: 15 series total (4-bit allocation)
+
+## Contract Functions
+
+### Token Contract (NumberGoUp)
 ```typescript
-// Read functions
-balanceOf(address account) returns (uint256)           // Get ERC20 balance
-ownerOf(uint256 tokenId) returns (address)            // Get NFT owner
-owneds(address account) returns (uint256[])     // Get all NFTs owned by an address
+// Read Functions
+balanceOf(address account) returns (uint256)                    // Get ERC20 balance
+erc721BalanceOf(address account) returns (uint256)             // Get NFT balance
+getOwnedERC721Data(address owner) returns (uint256[], uint256[]) // Get full and formatted NFT IDs
+erc721TransferExempt(address account) returns (bool)           // Check if address is transfer exempt
+ownerOf(uint256 tokenId) returns (address)                     // Get NFT owner
+currentTokenId() returns (uint256)                             // Get current token ID
+erc20TotalSupply() returns (uint256)                          // Get total ERC20 supply
+erc721TotalSupply() returns (uint256)                         // Get total NFT supply
+tokenURI(uint256 id) returns (string)                         // Get token metadata URI
 
-erc721TransferExempt(address account) returns (bool)  // Check if address is transfer exempt
-units() returns (uint256)                             // Get the base unit value (1e18)
-decimals() returns (uint8)                            // Get token decimals (18)
-name() returns (string)                               // Get token name
-symbol() returns (string)                             // Get token symbol
-
-// Write functions
-transfer(address to, uint256 amount)                  // Transfer tokens
-approve(address spender, uint256 amount)              // Approve spender (for ERC20 transfers)
-setERC721TransferExempt(address account, bool exempt) // Set transfer exempt status (admin only)
+// Write Functions
+transfer(address to, uint256 amount) returns (bool)            // Transfer tokens
+approve(address spender, uint256 amount) returns (bool)        // Approve ERC20 spending
+setERC721TransferExempt(address account, bool exempt)         // Set transfer exempt status
+setURIBase(string newBase)                                    // Update base URI for metadata
 ```
 
-#### NGUStaking Contract
+### Staking Contract (NGUStaking)
 ```typescript
-// Read functions
-stakedERC20TokenBank(address account) returns (uint256) // Get staked balance
-erc20TotalBalanceOf(address account) returns (uint256)  // Get total balance (staked + unstaked)
-formatNFTId(uint256 tokenId) returns (string)          // Get human-readable NFT ID
-owneds(address account) returns (uint256[])      // Get all NFTs owned by an address
+// Read Functions
+balanceOf(address owner) returns (uint256)                     // Get staked balance
+getStakedERC721Tokens(address owner) returns (uint256[], uint256[]) // Get staked NFT IDs
+erc20TotalBalanceOf(address owner) returns (uint256)          // Get total balance (staked + unstaked)
+getStakedOwner(uint256 tokenId) returns (address)             // Get staked token owner
+getStakedIndex(uint256 tokenId) returns (uint256)             // Get token's position in stake queue
 
-// Write functions
-stake(uint256[] calldata tokenIds)                     // Stake multiple NFTs
-unstake(uint256[] calldata tokenIds)                   // Unstake multiple NFTs
+// Write Functions
+stake(uint256[] calldata tokenIds)                            // Stake NFTs
+unstake(uint256[] calldata tokenIds)                          // Unstake NFTs
 ```
 
-### Event-Emitting Functions
+## Event Emissions
 
-| Function | Events Emitted | Description |
-|----------|---------------|-------------|
-| `transfer` | `ERC20Events.Transfer`, `ERC721Events.Transfer`, `ERC721Events.Burn`, `ERC721Events.Mint` | Emits different events based on transfer type (exempt/non-exempt) |
-| `approve` | `ERC20Events.Approval` | Emits when ERC20 approval is granted |
-| `setApprovalForAll` | `ERC721Events.ApprovalForAll` | Emits when ERC721 approval for all tokens is set |
-| `_mintERC721` | `ERC721Events.Mint`, `NFTSeriesChanged` | Emits when new NFT is minted and series changes |
-| `_withdrawAndBurnERC721` | `ERC721Events.Burn` | Emits when NFT is burned |
-| `setERC721TransferExempt` | `ERC721TransferExemptSet` | Emits when address exemption status changes |
-| `addExemptionManager` | `ExemptionManagerAdded` | Emits when new exemption manager is added |
-
-### Gas Usage Guidelines
-1. **Transfer Operations**
-   - Exempt → Non-exempt (Minting): ~71K gas per NFT, max 400 NFTs per tx
-   - Non-exempt → Exempt (Burning): ~14K gas per NFT, max 700 NFTs per tx
-   - Non-exempt → Non-exempt: ~57K gas per NFT, max 400 NFTs per tx
-   - Exempt → Exempt: ~52.5K gas flat rate, tested up to 10,000 tokens
-   - Recommend staying under 80% of limits for safety
-
-2. **Staking Operations**
-   - Maximum batch size: 400 tokens per transaction (based on transfer limits)
-   - Stake: ~50-60K gas per operation
-   - Unstake: ~50-60K gas per operation
-
-### Common Integration Patterns
-
-1. **Display NFT IDs**
-```javascript
-// Get human-readable NFT ID
-const formattedId = await stakingContract.formatNFTId(tokenId);
-// Returns format like "1#1" for series 1, token 1
+### ERC20 Events
+```typescript
+event Transfer(address indexed from, address indexed to, uint256 value)
+event Approval(address indexed owner, address indexed spender, uint256 value)
 ```
 
-2. **Check Balances**
-```javascript
-// Get total balance (staked + unstaked)
-const totalBalance = await stakingContract.erc20TotalBalanceOf(userAddress);
-// Get staked balance
-const stakedBalance = await stakingContract.stakedERC20TokenBank(userAddress);
-// Get unstaked balance
-const unstakedBalance = await ngu505Contract.balanceOf(userAddress);
+### ERC721 Events
+```typescript
+event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)
+event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId)
+event ApprovalForAll(address indexed owner, address indexed operator, bool approved)
+event URIBaseUpdated(string newBase)
 ```
 
-3. **Batch Operations**
-```javascript
-// Batch stake (recommended max 200 tokens per tx)
-const tokenIds = [1, 2, 3, ...];  // Up to 200 tokens
-await stakingContract.stake(tokenIds);
-
-// Batch unstake (recommended max 200 tokens per tx)
-await stakingContract.unstake(tokenIds);
+### Staking Events
+```typescript
+event Staked(address indexed owner, uint256 indexed tokenId)
+event Unstaked(address indexed owner, uint256 indexed tokenId)
 ```
 
-### Error Handling
-Common errors to handle:
-- `NotFound`: Token ID doesn't exist
-- `QueueEmpty`: Attempt to dequeue from empty queue
-- `QueueFull`: Queue is at maximum capacity
-- `AccessControlError`: User not authorized for admin operation
-- `InsufficientBalance`: Not enough tokens for operation
-- `InvalidTokenId`: Token ID is not valid
-- `TransferFailed`: Token transfer failed
+## Transfer Mechanics
 
-## Contract Limitations
+### Transfer Types
+1. **Exempt → Exempt**: Regular ERC20 transfer
+2. **Exempt → Non-exempt**: Mints NFTs to recipient
+3. **Non-exempt → Exempt**: Burns NFTs from sender
+4. **Non-exempt → Non-exempt**: Transfers NFTs between queues
 
-1. **Technical Limitations**
-   - Block gas limit: 50M gas
-   - Gas per transfer: ~40-50K
-   - Maximum batch sizes:
-     - Transfers: Up to 1000 tokens per tx (based on gas limit)
-     - Staking: Up to 1000 tokens per tx
-     - Unstaking: Up to 1000 tokens per tx
-     - Recommended batch size: 100-200 tokens for optimal gas usage
+### Gas Usage & Limits
+- Exempt → Non-exempt (Minting): ~71K gas/NFT, max 400 NFTs/tx
+- Non-exempt → Exempt (Burning): ~14K gas/NFT, max 700 NFTs/tx
+- Non-exempt → Non-exempt: ~57K gas/NFT, max 400 NFTs/tx
+- Exempt → Exempt: ~52.5K gas flat rate
 
-2. **NFT Series Limitations**
-   - 15 series available (1-9, A-F)
-   - Each series: 10 billion NFTs
-   - Total capacity: 150 billion NFTs
+## Staking System
 
-3. **Transfer Restrictions**
-   - NFTs cannot be directly transferred
-   - All transfers must use the queue system
-   - Staked NFTs are locked until unstaked
+### Features
+- 1:1 staking ratio (1 NFT = 1 token)
+- FIFO queue for NFT management
+- Maintains original token ownership
+- Automatic queue position tracking
 
-4. **Staking Constraints**
-   - 1:1 ratio of NFTs to whole tokens
-   - No partial token staking
-   - FIFO queue for NFT transfers
+### Limits
+- Maximum stake batch: 400 tokens
+- Maximum unstake batch: 400 tokens
+- Gas usage: ~50-60K per operation
 
 ## Security Considerations
 
-1. **Gas Optimization**
-   - Keep batch sizes well below limits
-   - Include sufficient gas margin
-   - Monitor network conditions
+### Best Practices
+1. **Batch Operations**
+   - Keep below 80% of maximum limits
+   - Monitor gas usage
+   - Split large operations into smaller batches
 
-2. **Queue Management**
-   - Queue operations are FIFO
-   - Cannot skip queue positions
-   - Queue state affects transfer availability
+2. **Balance Management**
+   - Verify total balance (staked + unstaked)
+   - Check NFT ownership before operations
+   - Monitor queue positions
 
-3. **Balance Tracking**
-   - Always verify total balance
-   - Check both staked and unstaked amounts
-   - Monitor NFT ownership changes
+3. **Transfer Safety**
+   - Verify recipient status (exempt/non-exempt)
+   - Check allowances for ERC20 transfers
+   - Ensure sufficient gas for NFT operations
 
-## NFT Details 
-Overview: The NFTs are stored in a series-based format. The series is represented by a hex prefix (0-F). The series increments with each new mint past uint256.max(), the ID increments with each new mint. The NFT ID is a combination of the series prefix and a token ID.
-
-The total number of available NFTs is (15 * 2^256), which should be enough for a long time.
-
-### NFT ID Format
-- Format: `{series}#{id}`
-- Example: `1#1234` (Series 1, ID 1234)
-- Series range: 1-9, A-F
-- ID range: 1 to 10 billion per series
-
-### NFT ID Helpers
-Add helper functions for working with the hex series-based NFT IDs:
-- `formatNFTID(uint256 id) returns (string)`: Convert NFT ID to format like "0x1..." for series 1
-- `getSeriesPrefix(uint256 id) returns (uint8)`: Extract just the hex prefix (0-F)
-- `isSeriesComplete(uint8 series) returns (bool)`: Check if a series is full
-- `getCurrentSeries() returns (uint8)`: Get current minting series
-- `getNextSeries() returns (uint8)`: Preview next series (e.g., 9->A)
-- Consider adding events for series changes
-- Add documentation explaining the hex series system
-
-Purpose: Make it easier to:
-- Display NFT IDs in a human-readable format
-- Track and monitor series progression
-- Help users understand which series their NFTs belong to
-- Provide clear UI/UX for series-based NFT system
-
-### NFT Transfer Design
-- NFTs cannot be directly transferred between addresses
-- NFTs only move in two ways:
-  1. Through ERC20 transfers (using selling queue)
-  2. Through staking/unstaking operations
-- No safeTransferFrom needed since we don't support direct NFT transfers
-- NFTs are always tied to ERC20 balance (1 NFT per whole token)
-- Selling queue ensures FIFO order for NFT transfers
-- This design:
-  - Simplifies token management
-  - Reduces attack vectors
-  - Ensures NFTs always match ERC20 balances
-  - Makes token behavior more predictable
-
-## Staking Design
-The staking design is based on the ERC404 contract, but with some modifications to handle ERC721 tokens instead of ERC404's ERC20 tokens. The staking and unstaking processes are handled in the `NGU505Staking` contract, while the `INGU505Staking` interface is used to interact with it.
-
-### Staking Details
-The staking system is designed to work seamlessly with the base contract's queue mechanism:
-
-1. Queue-Based Security:
-   - NFTs can only be transferred if they're in the selling queue
-   - Staked NFTs are removed from queue, making them untransferable
-   - No need for additional transfer checks in staking contract
-
-2. Balance Management:
-   - Regular balance tracked in base contract's balanceOf
-   - Staked balance tracked in stakedERC20TokenBank
-   - Base contract's balance checks prevent transferring staked tokens
-   - Total balance available through erc20TotalBalanceOf
-
-3. NFT Movement:
-   - Staking: NFT moves from queue to _staked mapping
-   - Unstaking: NFT moves from _staked back to queue
-   - Transfers only possible with NFTs in queue
-
-4. Design Benefits:
-   - Physical separation of staked/unstaked NFTs
-   - Relies on existing queue security
-   - Clean separation of concerns
-   - No redundant checks needed
-
-## Batch Operation Limits
-The contract has been tested and optimized for batch operations, with the following maximum limits:
-
-1. Transfer Limits:
-   - Exempt to non-exempt (Minting): 400 tokens (28.5M gas total)
-   - Non-exempt to non-exempt: 400 tokens (22.8M gas total)
-   - Non-exempt to exempt (Burning): 700 tokens (9.8M gas total)
-   - Exempt to exempt: Tested up to 10,000 tokens (constant ~52.5K gas)
-   - These limits are due to gas constraints and queue operations
-
-2. Staking Limits:
-   - Maximum batch stake: 400 tokens (based on transfer limits)
-   - Maximum batch unstake: 400 tokens (same as staking)
-   - Limits are based on gas usage for queue management
-
-3. Gas Considerations:
-   - Limits are based on a block gas limit of 50M gas
-   - Actual limits may vary slightly based on network conditions
-   - Operations near the limits should include sufficient gas margin
-
-4. Best Practices:
-   - Keep batch sizes well below limits for safety (recommend 80% of max)
-   - Consider breaking large operations into multiple smaller batches
-   - Monitor gas usage when approaching limits
-   - Include appropriate gas limits in client applications
+### Error Handling
+Common errors to handle:
+- `InvalidSender`: Invalid sending address
+- `InvalidRecipient`: Invalid receiving address
+- `SenderInsufficientBalance`: Not enough tokens
+- `InvalidTokenId`: Token ID doesn't exist
+- `Unauthorized`: Caller not authorized
+- `MaxNFTsReached`: Series limit reached
+- `QueueEmpty`: No NFTs in queue
+- `UnsafeRecipient`: Recipient cannot handle NFTs
+- `InvalidStakingExemption`: Invalid staking exemption status
+- `InvalidStakingContract`: Invalid staking contract implementation
+- `TokenAlreadyStaked`: Token is already staked
+- `TokenNotStaked`: Token is not staked
+- `StakerInsufficientBalance`: Insufficient balance for staking

@@ -253,58 +253,6 @@ describe("NumberGoUp", function() {
             await logState(ngu, nonExempt1.address, "NonExempt1");
             await logState(ngu, exempt1.address, "Exempt1");
         });
-
-        it("Should find maximum NFTs that can be burned in one transaction", async function() {
-            console.log("\n=== Finding Maximum NFTs Burnable in One Transaction ===");
-            
-            let nftCount = 100n;
-            let lastSuccessfulAmount = 0n;
-            let lastSuccessfulGas = 0n;
-
-            while (true) {
-                try {
-                    // Deploy fresh contract for each test to avoid state interference
-                    const NGU = await ethers.getContractFactory("NumberGoUp");
-                    const freshContract = await NGU.deploy(
-                        "NumberGoUp",
-                        "NGU",
-                        18,
-                        10000n,
-                        owner.address,
-                        owner.address,
-                        owner.address,
-                        owner.address
-                    );
-
-                    // Set up exempt address
-                    await freshContract.setERC721TransferExempt(exempt1.address, true);
-
-                    // Give non-exempt user tokens/NFTs
-                    const amount = UNITS * nftCount;
-                    await freshContract.transfer(nonExempt1.address, amount, {
-                        gasLimit: 30000000
-                    });
-
-                    console.log(`\nTrying to burn ${nftCount} NFTs...`);
-                    const tx = await freshContract.connect(nonExempt1).transfer(exempt1.address, amount, {
-                        gasLimit: 30000000
-                    });
-                    const receipt = await tx.wait();
-                    lastSuccessfulAmount = nftCount;
-                    lastSuccessfulGas = receipt?.gasUsed || 0n;
-                    console.log(`Success! Gas used: ${lastSuccessfulGas}`);
-                    
-                    // Increment for next test
-                    nftCount += 50n;
-                } catch (error) {
-                    console.log(`\nFinal Results:`);
-                    console.log(`Maximum NFTs burned in one tx: ${lastSuccessfulAmount}`);
-                    console.log(`Gas used: ${lastSuccessfulGas}`);
-                    console.log(`Gas per NFT: ${Number(lastSuccessfulGas) / Number(lastSuccessfulAmount)}`);
-                    break;
-                }
-            }
-        });
     });
 
     describe("Exemption Management", function() {
