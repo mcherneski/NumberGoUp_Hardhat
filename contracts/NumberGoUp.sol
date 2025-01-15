@@ -12,7 +12,7 @@ import {NGU505Base} from "./NGU505Base.sol";
 /// @title NumberGoUp Token Contract
 /// @notice Implementation of the NGU token with ERC404, staking, and Uniswap V3 integration
 /// @dev Extends NGU505Staking and ERC404UniswapV3Exempt for full functionality
-contract NeverSkipLegDay is Ownable, NGU505Base, ERC404UniswapV3Exempt {
+contract NotGonnaMakeIt is Ownable, NGU505Base, ERC404UniswapV3Exempt {
     /// @notice Base URI for token metadata
     string public _uriBase = "https://ipfs.io/ipfs/QmUMUSjDwvMqgbPneHnvpQAt8cEBDEDgDZUyYM93qazLga/";
     

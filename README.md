@@ -1,5 +1,7 @@
 # NumberGoUp Token & Staking Contract
 
+## Note: Currently named "Not Gonna Make It" (NGMI) for testing purposes.
+
 ## Overview
 The NumberGoUp (NGU) token is a hybrid ERC20/ERC721 token (ERC404) that automatically converts between fungible tokens and NFTs based on the holder's status. The contract includes a staking mechanism that allows users to stake their NFTs while maintaining their ERC20 balance.
 
@@ -77,6 +79,7 @@ After successful deployment:
 - Integrated staking mechanism
 - Uniswap V3 integration
 - 5 rarity tiers with deterministic distribution
+- Infinite series looping (resets to 1 after reaching 15)
 
 ## NFT System
 
@@ -85,19 +88,22 @@ After successful deployment:
 - Series range: 1-15 (using 4 bits)
 - Token ID range: 1 to 10 billion per series
 - Example: `0x1000000000000001` = Series 1, Token 1
+- Series resets back to 1 after reaching 15 (0xF to 0x1)
 
 ### Rarity Tiers
 The contract implements 5 rarity variants with the following distribution:
-1. Rarity 1: 3% (Ultra Rare)
-2. Rarity 2: 9.7% (Rare)
+1. Rarity 5: 3% (Ultra Rare)
+2. Rarity 4: 9.7% (Rare)
 3. Rarity 3: 15.5% (Uncommon)
-4. Rarity 4: 24.9% (Common)
-5. Rarity 5: 46.9% (Basic)
+4. Rarity 2: 24.9% (Common)
+5. Rarity 1: 46.9% (Basic)
 
 ### Series Progression
 - Starts at Series 1 (0001)
-- Increments when token ID reaches limit
-- Maximum: 15 series total (4-bit allocation)
+- Increments when token ID reaches limit (10 billion tokens)
+- Maximum: 15 series (4-bit allocation)
+- After reaching series 15 (0xF), loops back to series 1 (0x1)
+- Continues infinitely, maintaining unique NFT IDs within each cycle
 
 ## Contract Functions
 

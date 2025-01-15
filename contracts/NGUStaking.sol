@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {INGU505Staking} from "./interfaces/INGU505Staking.sol";
-import {NeverSkipLegDay} from "./NumberGoUp.sol";
+import {NotGonnaMakeIt} from "./NumberGoUp.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/interfaces/IERC721Receiver.sol";
@@ -11,7 +11,7 @@ import {IERC721Receiver} from "@openzeppelin/contracts/interfaces/IERC721Receive
 /// @notice External staking contract for NumberGoUp NFTs
 contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver {
     /// @notice The NumberGoUp token contract
-    NeverSkipLegDay public immutable nguToken;
+    NotGonnaMakeIt public immutable nguToken;
 
     /// @notice Mapping of user address to their staked token IDs
     mapping(address => uint256[]) private _stakedTokens;
@@ -28,7 +28,7 @@ contract NGUStaking is INGU505Staking, ReentrancyGuard, Ownable, IERC721Receiver
     uint256 private constant _BITMASK_INDEX = ((1 << 96) - 1) << 160;
 
     constructor(address nguToken_, address initialOwner_) Ownable(initialOwner_) {
-        nguToken = NeverSkipLegDay(nguToken_);
+        nguToken = NotGonnaMakeIt(nguToken_);
     }
 
     function getStakedOwner(uint256 tokenId_) public view returns (address owner_) {
