@@ -3,6 +3,64 @@
 ## Overview
 The NumberGoUp (NGU) token is a hybrid ERC20/ERC721 token (ERC404) that automatically converts between fungible tokens and NFTs based on the holder's status. The contract includes a staking mechanism that allows users to stake their NFTs while maintaining their ERC20 balance.
 
+## Deployment Instructions
+
+### Prerequisites
+1. Node.js v18+ installed
+2. `.env` file with the following variables:
+   ```
+   PRIVATE_KEY=your_private_key
+   BASE_MAINNET_RPC=your_base_mainnet_rpc_url
+   BASESCAN_API_KEY=your_basescan_api_key
+   ```
+
+### Base Mainnet Deployment
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+2. Compile contracts:
+   ```bash
+   npx hardhat clean
+   npx hardhat compile
+   ```
+
+3. Deploy to Base mainnet:
+   ```bash
+   HARDHAT_NETWORK=baseMainnet npx hardhat run scripts/base/deploy_core_mainnet.ts --verbose
+   ```
+
+The deployment script will:
+- Deploy the NeverSkipLegDay token contract
+- Deploy the NGUStaking contract
+- Set up the staking contract in the token contract
+- Verify both contracts on Basescan
+- Save deployment information in `deployments/base/`
+
+### Contract Addresses
+Base Mainnet Uniswap V3 addresses used in deployment:
+- Factory: `0x33128a8fC17869897dcE68Ed026d694621f6FDfD`
+- Position Manager: `0x03a520b32C04BF3bEEf7BEb72E919cf822Ed34f1`
+- Swap Router: `0x2626664c2603336E57B271c5C0b26F421741e481`
+- WETH: `0x4200000000000000000000000000000000000006`
+
+### Post-Deployment
+After successful deployment:
+1. The deployment addresses will be saved in `deployments/base/deployment_summary.json`
+2. Contracts will be automatically verified on Basescan
+3. The deployer address will have the initial token supply and admin roles
+
+### Troubleshooting
+- If verification fails, you can manually verify using:
+  ```bash
+  npx hardhat verify --network baseMainnet <contract_address> <constructor_args>
+  ```
+- For deployment issues, check:
+  - Gas price settings in hardhat.config.ts
+  - Network RPC stability
+  - Account balance for deployment costs
+
 ## Contract Architecture
 
 ### Core Components

@@ -302,11 +302,10 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
                 _currentTokenId = 1;  // Reset ID to 1
                 
                 // Handle series increment in hex order (1-9, then A-F)
-                if (_currentSeries == 0xF) revert MaxNFTsReached(unicode"¯\\_(ツ)_/¯");  // All series exhausted
-                
-                // If current series is 9, jump to A (hex)
-                if (_currentSeries == 0x9) {
-                    _currentSeries = 0xA;
+                if (_currentSeries == 0xF) {
+                    _currentSeries = 0x1;  // Loop back to series 1 instead of reverting
+                } else if (_currentSeries == 0x9) {
+                    _currentSeries = 0xA;  // If current series is 9, jump to A (hex)
                 } else {
                     _currentSeries++;
                 }

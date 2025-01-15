@@ -98,8 +98,6 @@ interface INGU505Base is IERC165 {
     error InvalidOperator();
     /// @notice Unsafe recipient
     error UnsafeRecipient();
-    /// @notice Maximum NFTs reached
-    error MaxNFTsReached(string message);
     /// @notice Invalid staking contract
     error InvalidStakingContract();
 
