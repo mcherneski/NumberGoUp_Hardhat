@@ -1,7 +1,7 @@
-# NumberGoUp (NGU) Token Overview
+# Not Gonna Make It (NGMI) Token Overview
 
-## What is NumberGoUp?
-NumberGoUp is a hybrid token that combines the features of both ERC20 (fungible tokens like ETH) and ERC721 (non-fungible tokens/NFTs). It's designed to provide a unique trading experience where users can seamlessly switch between using their tokens as traditional cryptocurrency or as collectible NFTs.
+## What is Not Gonna Make It?
+Not Gonna Make It is a hybrid token that combines the features of both ERC20 (fungible tokens like ETH) and ERC721 (non-fungible tokens/NFTs). It's designed to provide a unique trading experience where users can seamlessly switch between using their tokens as traditional cryptocurrency or as collectible NFTs.
 
 ## Key Features
 
