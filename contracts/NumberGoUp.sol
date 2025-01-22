@@ -6,9 +6,6 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {ERC404UniswapV3Exempt} from "./extensions/ERC404UniswapV3Exempt.sol";
 import {NGU505Base} from "./NGU505Base.sol";
 
-// Modify metadata to add more attributes? Generate in contract?
-
-
 /// @title NumberGoUp Token Contract
 /// @notice Implementation of the NGU token with ERC404, staking, and Uniswap V3 integration
 /// @dev Extends NGU505Staking and ERC404UniswapV3Exempt for full functionality
@@ -68,20 +65,20 @@ contract NotGonnaMakeIt is Ownable, NGU505Base, ERC404UniswapV3Exempt {
         uint256 v = (uint256(keccak256(abi.encode(id))) % 1000);
         uint256 d;
         if (v < 29) {
-            // Rarity 1: 3%
-            d = 1;
+            // Rarity 5: 3%
+            d = 5;
         } else if (v < 127) {
-            // Rarity 2: 9.7%
-            d = 2;
+            // Rarity 4: 9.7%
+            d = 4;
         } else if (v < 282) {
             // Rarity 3: 15.5%
             d = 3;
         } else if (v < 531) {
-            // Rarity 4: 24.9%
-            d = 4;
+            // Rarity 2: 24.9%
+            d = 2;
         } else {
-            // Rarity 5: 46.9%
-            d = 5;
+            // Rarity 1: 46.9%
+            d = 1;
         }
         string memory dString = d.toString();
         return string(abi.encodePacked(_uriBase, dString, ".json"));
