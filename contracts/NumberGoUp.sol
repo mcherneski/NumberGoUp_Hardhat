@@ -11,7 +11,7 @@ import {NGU505Base} from "./NGU505Base.sol";
 /// @dev Extends NGU505Staking and ERC404UniswapV3Exempt for full functionality
 contract NotGonnaMakeIt is Ownable, NGU505Base, ERC404UniswapV3Exempt {
     /// @notice Base URI for token metadata
-    string public _uriBase = "https://ipfs.io/ipfs/QmUMUSjDwvMqgbPneHnvpQAt8cEBDEDgDZUyYM93qazLga/";
+    string public _uriBase = "https://ipfs.io/ipfs/bafybeiajq65fmxrvxdutiln2nu54maa7dfuqybuhehszaerneca2wbek4i/";
     
     /// @notice Number of different token variants
     uint256 public constant variants = 5;
