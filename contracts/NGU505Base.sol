@@ -298,8 +298,8 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
 
     function _mintERC721(address to_) internal virtual returns (uint256) {
         unchecked {
-            if (_currentTokenId >= 1_000_000_000) {
-                _currentTokenId = 1;  // Reset ID to 1
+            if (_currentTokenId >= 10_000_000) {
+                _currentTokenId = 1;
                 
                 // Handle series increment in hex order (1-9, then A-F)
                 if (_currentSeries == 0xF) {
