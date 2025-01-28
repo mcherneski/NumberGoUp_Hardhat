@@ -6,9 +6,6 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {ERC404UniswapV3Exempt} from "./extensions/ERC404UniswapV3Exempt.sol";
 import {NGU505Base} from "./NGU505Base.sol";
 
-// Modify metadata to add more attributes? Generate in contract?
-
-
 /// @title NumberGoUp Token Contract
 /// @notice Implementation of the NGU token with ERC404, staking, and Uniswap V3 integration
 /// @dev Extends NGU505Staking and ERC404UniswapV3Exempt for full functionality
