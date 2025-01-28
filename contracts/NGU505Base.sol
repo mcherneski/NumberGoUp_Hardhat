@@ -298,22 +298,24 @@ abstract contract NGU505Base is INGU505Base, ReentrancyGuard, AccessControl {
 
     function _mintERC721(address to_) internal virtual returns (uint256) {
         unchecked {
-            if (_currentTokenId >= 10_000_000_000) {
+            if (_currentTokenId >= 1_000_000_000) {
                 _currentTokenId = 1;  // Reset ID to 1
                 
                 // Handle series increment in hex order (1-9, then A-F)
                 if (_currentSeries == 0xF) {
-                    _currentSeries = 0x1;  // Loop back to series 1 instead of reverting
+                    _currentSeries = 0x1;
+                    emit NFTSeriesChanged(_currentSeries - 1, _currentSeries);
                 } else if (_currentSeries == 0x9) {
-                    _currentSeries = 0xA;  // If current series is 9, jump to A (hex)
+                    _currentSeries = 0xA;
+                    emit NFTSeriesChanged(_currentSeries - 1, _currentSeries);
                 } else {
                     _currentSeries++;
+                    emit NFTSeriesChanged(_currentSeries - 1, _currentSeries);
                 }
             }
             
             uint256 nftId = (_currentSeries << (256 - 4)) | _currentTokenId;
             _currentTokenId++;
-            emit NFTSeriesChanged(_currentSeries - 1, _currentSeries);
             _addToOwned(to_, nftId);
 
             emit ERC721Events.Mint(to_, nftId, _extractTokenID(nftId));
